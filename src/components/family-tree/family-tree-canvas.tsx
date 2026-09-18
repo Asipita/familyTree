@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { BookOpen, MessageCircle, PencilLine, UsersRound, X } from "lucide-react";
 import {
   Background,
   Controls,
@@ -23,6 +24,14 @@ type PersonData = {
 
 type UnionData = {
   dates: string;
+};
+
+type PersonStoryDetails = {
+  biography: string;
+  storyTitle: string;
+  storyStatus: "Published" | "In review" | "Draft";
+  storyCount: number;
+  contributors: string[];
 };
 
 function PersonNode({ data }: NodeProps<Node<PersonData, "person">>) {
@@ -52,6 +61,72 @@ function UnionNode({ data }: NodeProps<Node<UnionData, "union">>) {
 }
 
 const nodeTypes = { person: PersonNode, union: UnionNode };
+
+const personStoryDetails: Record<string, PersonStoryDetails> = {
+  adewale: {
+    biography: "A patient builder who believed a family was strongest when everyone had a place at the table.",
+    storyTitle: "A quiet kind of courage",
+    storyStatus: "Published",
+    storyCount: 3,
+    contributors: ["Kemi", "Sade", "Tola"],
+  },
+  sade: {
+    biography: "The keeper of the family house, known for remembering every birthday, visitor, and unfinished conversation.",
+    storyTitle: "The house that was always open",
+    storyStatus: "In review",
+    storyCount: 2,
+    contributors: ["Kemi", "Nneka"],
+  },
+  funmi: {
+    biography: "She never called it leadership. She noticed what needed doing, and did it before anyone asked.",
+    storyTitle: "The woman who made room",
+    storyStatus: "In review",
+    storyCount: 4,
+    contributors: ["Kemi", "Adaeze", "Tola"],
+  },
+  bayo: {
+    biography: "A steady presence with a practical kindness, whose best advice usually arrived while fixing something.",
+    storyTitle: "The things he repaired",
+    storyStatus: "Draft",
+    storyCount: 1,
+    contributors: ["Kemi"],
+  },
+  segun: {
+    biography: "A thoughtful uncle who made room for questions and never rushed an answer that deserved more time.",
+    storyTitle: "Notes from the long drive home",
+    storyStatus: "Published",
+    storyCount: 2,
+    contributors: ["Tunde", "Kemi"],
+  },
+  nneka: {
+    biography: "The family storyteller, with a gift for turning ordinary afternoons into memories worth keeping.",
+    storyTitle: "Every afternoon had a name",
+    storyStatus: "Draft",
+    storyCount: 1,
+    contributors: ["Tunde", "Kemi"],
+  },
+  kemi: {
+    biography: "The person carrying the family archive forward, gathering the fragments and giving them somewhere to meet.",
+    storyTitle: "What I remember first",
+    storyStatus: "Draft",
+    storyCount: 2,
+    contributors: ["Tola", "Adaeze"],
+  },
+  tola: {
+    biography: "A sibling, witness, and keeper of the details Kemi was too young to remember the first time around.",
+    storyTitle: "Our mother’s blue cupboard",
+    storyStatus: "In review",
+    storyCount: 2,
+    contributors: ["Kemi", "Nneka"],
+  },
+  tunde: {
+    biography: "The cousin who keeps the family laughing, and remembers the stories that begin with ‘you had to be there.’",
+    storyTitle: "You had to be there",
+    storyStatus: "Published",
+    storyCount: 2,
+    contributors: ["Kemi", "Segun"],
+  },
+};
 
 const nodes: Node[] = [
   {
@@ -142,11 +217,57 @@ const edges: Edge[] = [
   { id: "union-tunde", source: "union-segun", target: "tunde", type: "smoothstep", style: { stroke: "#a9b8ab", strokeWidth: 1.5 } },
 ];
 
+function PersonStoryPanel({
+  details,
+  person,
+  onClose,
+}: {
+  details: PersonStoryDetails;
+  person: PersonData;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="flow-story-panel" aria-label={`${person.name} family details`} onClick={(event) => event.stopPropagation()}>
+      <div className="flow-story-panel-header">
+        <span className="archive-panel-kicker">Person in your family</span>
+        <button className="flow-story-close" onClick={onClose} aria-label="Close family member details"><X size={17} /></button>
+      </div>
+      <div className="flow-story-identity">
+        <span className={`flow-story-avatar ${person.tone}`}>{person.initials}</span>
+        <span><h2>{person.name}</h2><small>{person.dates} · {person.relation}</small></span>
+      </div>
+      <div className="flow-story-bio">
+        <span className="flow-story-label">A little of what we know</span>
+        <p>{details.biography}</p>
+      </div>
+      <div className="flow-connected-story">
+        <div className="flow-connected-story-top"><span><BookOpen size={14} /> Connected story</span><em className={`flow-story-status flow-story-status-${details.storyStatus.toLowerCase().replace(" ", "-")}`}>{details.storyStatus}</em></div>
+        <h3>{details.storyTitle}</h3>
+        <small>{details.storyCount} {details.storyCount === 1 ? "story" : "stories"} connected to this person</small>
+        <div className="flow-story-contributors"><span className="flow-story-contributor-label"><UsersRound size={13} /> With family</span><span className="flow-contributor-stack">{details.contributors.map((contributor, index) => <i key={contributor} className={`flow-contributor-avatar ${["clay", "moss", "blue", "gold"][index % 4]}`}>{contributor.slice(0, 2).toUpperCase()}</i>)}</span></div>
+      </div>
+      <div className="flow-story-actions">
+        <a className="button button-primary button-md" href="/archive/stories/new"><PencilLine size={15} /> Write a story</a>
+        <a className="button button-secondary button-md" href="/archive/stories/new"><MessageCircle size={15} /> Edit story</a>
+      </div>
+    </aside>
+  );
+}
+
 export function FamilyTreeCanvas() {
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const defaultEdgeOptions = useMemo(() => ({
     selectable: false,
     focusable: false,
   }), []);
+
+  const handleNodeClick = useCallback((_event: MouseEvent, node: Node) => {
+    if (node.type === "person") setSelectedNodeId(node.id);
+  }, []);
+
+  const selectedNode = selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) : undefined;
+  const selectedPerson = selectedNode?.type === "person" ? selectedNode.data as PersonData : undefined;
+  const selectedDetails = selectedNodeId ? personStoryDetails[selectedNodeId] : undefined;
 
   return (
     <div className="family-tree-canvas" aria-label="Interactive family tree">
@@ -159,6 +280,8 @@ export function FamilyTreeCanvas() {
         nodeTypes={nodeTypes}
         nodesConnectable={false}
         nodesDraggable={false}
+        onNodeClick={handleNodeClick}
+        onPaneClick={() => setSelectedNodeId(null)}
         panOnDrag
         proOptions={{ hideAttribution: true }}
         zoomOnScroll={false}
@@ -167,6 +290,7 @@ export function FamilyTreeCanvas() {
         <Controls showInteractive={false} />
       </ReactFlow>
       <div className="family-tree-legend"><span className="family-tree-legend-dot" /> Your branch <span className="family-tree-legend-line" /> Relationship</div>
+      {selectedPerson && selectedDetails ? <PersonStoryPanel details={selectedDetails} onClose={() => setSelectedNodeId(null)} person={selectedPerson} /> : null}
     </div>
   );
 }
