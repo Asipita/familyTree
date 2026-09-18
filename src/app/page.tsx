@@ -3,10 +3,7 @@ import {
   BookOpen,
   Check,
   ChevronRight,
-  CircleUserRound,
   Feather,
-  GitBranch,
-  HeartHandshake,
   LockKeyhole,
   Menu,
   Quote,
@@ -66,8 +63,6 @@ export default function Home() {
           <span className="wordmark-name">FamilyTree</span>
         </a>
         <div className="nav-links">
-          <a href="#why">Why FamilyTree</a>
-          <a href="#how">How it works</a>
           <a href="#stories">Stories</a>
         </div>
         <div className="nav-actions">
@@ -86,7 +81,7 @@ export default function Home() {
           </p>
           <div className="hero-actions">
             <Button size="lg">Begin your family story <ArrowUpRight size={17} /></Button>
-            <a className="text-link" href="#how">See how it works <ChevronRight size={16} /></a>
+            <a className="text-link" href="#stories">Read a family story <ChevronRight size={16} /></a>
           </div>
           <div className="trust-note">
             <span className="trust-avatars" aria-hidden="true">
@@ -130,42 +125,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="belief-strip shell" id="why">
-        <div className="belief-heading"><span className="eyebrow-line" /> The idea</div>
-        <div className="belief-copy"><p>Every family has a hero. FamilyTree helps their story travel further.</p><span className="belief-mark">✳</span></div>
-      </section>
-
-      <section className="principles shell" id="how">
-        <div className="section-intro">
-          <span className="eyebrow">A better way to remember</span>
-          <h2>History becomes meaningful when it sounds like the people who lived it.</h2>
-          <p>Not a database of names. A considered, collective record of the people, places, and choices that brought your family here.</p>
-        </div>
-        <div className="principle-grid">
-          <article className="principle-card principle-card-featured">
-            <span className="principle-icon"><Feather size={20} /></span>
-            <span className="principle-number">01</span>
-            <h3>Write it in your own voice.</h3>
-            <p>Capture the small details, the hard-won wisdom, and the stories only your family can tell.</p>
-            <a href="#stories">Explore the story editor <ArrowUpRight size={14} /></a>
-          </article>
-          <article className="principle-card">
-            <span className="principle-icon"><HeartHandshake size={20} /></span>
-            <span className="principle-number">02</span>
-            <h3>Remember together.</h3>
-            <p>Invite relatives to add context, pair-review memories, and keep every story honest and whole.</p>
-            <div className="review-stack"><span className="review-avatar clay">AO</span><span className="review-avatar moss">KM</span><span className="review-avatar blue">+4</span><span className="review-label">Reviewed by family</span></div>
-          </article>
-          <article className="principle-card">
-            <span className="principle-icon"><GitBranch size={20} /></span>
-            <span className="principle-number">03</span>
-            <h3>See the connections.</h3>
-            <p>Place every life in context, then connect their stories to the family tree for generations to come.</p>
-            <div className="micro-tree"><span /><span /><span /><span /><span /></div>
-          </article>
-        </div>
-      </section>
-
       <section className="story-feature shell" id="stories">
         <div className="story-photo">
           <div className="photo-sun" />
@@ -197,7 +156,7 @@ export default function Home() {
 
       <footer className="site-footer shell">
         <div className="footer-brand"><a className="wordmark" href="#top"><span className="brand-mark brand-mark-small"><FamilyTreeLogo size={40} /></span><span className="wordmark-name">FamilyTree</span></a><p>Keep the story in the family.</p></div>
-        <div className="footer-links"><a href="#why">Our approach</a><a href="#how">How it works</a><a href="#stories">Stories</a><a href="#privacy">Privacy</a></div>
+        <div className="footer-links"><a href="#stories">Stories</a><a href="#top">Back to top</a></div>
         <div className="footer-meta"><span>© 2026 FamilyTree</span><span className="footer-status"><span /> Built with care</span></div>
       </footer>
     </main>

@@ -110,39 +110,6 @@ button { font: inherit; }
 .archive-note-bottom { bottom: 70px; left: 3px; transform: rotate(-6deg); background: #fff; color: var(--ink-soft); border: 1px solid var(--line); box-shadow: 0 7px 20px rgba(23,42,53,.08); }
 .archive-note-bottom svg { color: var(--moss); }
 
-.belief-strip { display: grid; grid-template-columns: 20% 1fr; gap: 60px; align-items: start; padding: 23px 0 88px; border-top: 1px solid var(--line-dark); }
-.belief-heading { display: flex; align-items: center; gap: 11px; color: var(--clay-dark); font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-.belief-copy { display: flex; align-items: flex-start; justify-content: space-between; gap: 30px; }
-.belief-copy p { max-width: 610px; margin: 0; font-family: var(--serif); font-size: 30px; line-height: 1.15; letter-spacing: -.035em; }
-.belief-mark { margin-top: 2px; color: var(--clay); font-size: 31px; }
-
-.principles { padding: 0 0 120px; }
-.section-intro { max-width: 700px; margin-bottom: 47px; }
-.section-intro h2 { margin: 17px 0 15px; font-family: var(--serif); font-size: 39px; line-height: 1.12; letter-spacing: -.045em; font-weight: 400; }
-.section-intro p { max-width: 520px; margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.7; }
-.principle-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; }
-.principle-card { min-height: 326px; position: relative; display: flex; flex-direction: column; padding: 28px 28px 25px; background: var(--card); border: 1px solid var(--line); transition: transform .25s ease, box-shadow .25s ease; }
-.principle-card:hover { transform: translateY(-4px); box-shadow: 0 18px 35px rgba(23,42,53,.08); }
-.principle-card-featured { color: #fff; background: var(--ink); border-color: var(--ink); }
-.principle-icon { width: 41px; height: 41px; display: grid; place-items: center; color: var(--clay); border: 1px solid currentColor; border-radius: 50%; }
-.principle-card-featured .principle-icon { color: #efb19e; }
-.principle-number { position: absolute; top: 31px; right: 29px; color: var(--ink-faint); font-size: 10px; letter-spacing: .12em; }
-.principle-card-featured .principle-number { color: #84979c; }
-.principle-card h3 { max-width: 220px; margin: 43px 0 12px; font-family: var(--serif); font-size: 25px; line-height: 1.08; letter-spacing: -.04em; font-weight: 400; }
-.principle-card p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.65; }
-.principle-card-featured p { color: #c6d0d0; }
-.principle-card a { display: inline-flex; align-items: center; gap: 5px; margin-top: auto; padding-top: 24px; color: #f1b29d; font-size: 11px; font-weight: 700; }
-.review-stack { display: flex; align-items: center; margin-top: auto; padding-top: 24px; }
-.review-avatar { width: 27px; height: 27px; border: 2px solid #fff; margin-left: -5px; }
-.review-avatar:first-child { margin-left: 0; }
-.review-label { margin-left: 9px; color: var(--ink-faint); font-size: 9px; }
-.micro-tree { position: relative; display: flex; align-items: center; gap: 19px; margin-top: auto; padding-top: 27px; }
-.micro-tree::before, .micro-tree::after { content: ""; position: absolute; height: 1px; background: #c6d0c8; }
-.micro-tree::before { left: 9px; right: 9px; top: 42px; }
-.micro-tree::after { left: 29px; top: 27px; width: 1px; height: 31px; background: #c6d0c8; }
-.micro-tree span { position: relative; z-index: 1; width: 17px; height: 17px; background: var(--paper-warm); border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px #c6d0c8; }
-.micro-tree span:nth-child(3) { width: 23px; height: 23px; background: var(--clay); box-shadow: 0 0 0 1px var(--clay-dark); }
-
 .story-feature { display: grid; grid-template-columns: 1fr 1fr; min-height: 590px; margin-bottom: 118px; background: var(--paper-warm); }
 .story-photo { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #c1aa8a; }
 .story-photo::before { content: ""; position: absolute; inset: 0; background: linear-gradient(145deg, #b9a07d 0%, #ded1ae 47%, #8d8870 100%); opacity: .84; }
@@ -210,11 +177,6 @@ button { font: inherit; }
   .archive-card { padding: 25px 23px 21px; }
   .archive-note-top { right: 0; }
   .archive-note-bottom { left: 0; }
-  .belief-strip { grid-template-columns: 1fr; gap: 20px; padding-bottom: 69px; }
-  .belief-copy p { font-size: 28px; }
-  .belief-mark { display: none; }
-  .principles { padding-bottom: 78px; }
-  .section-intro h2 { font-size: 34px; }
   .story-feature { grid-template-columns: 1fr; min-height: 0; margin-bottom: 75px; }
   .story-photo { min-height: 400px; }
   .story-copy { padding: 45px 29px 52px; }
