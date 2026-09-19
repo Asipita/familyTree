@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState, type MouseEvent } from "react";
-import { BookOpen, MessageCircle, PencilLine, UsersRound, X } from "lucide-react";
+import { useCallback, useMemo, useState, type FormEvent, type MouseEvent } from "react";
+import { BookOpen, MessageCircle, PencilLine, Plus, UsersRound, X } from "lucide-react";
 import {
   Background,
   Controls,
@@ -20,6 +20,15 @@ type PersonData = {
   initials: string;
   tone: "clay" | "moss" | "blue" | "gold";
   relation?: string;
+};
+
+type MemberRelation = "parent" | "child" | "sibling" | "partner" | "grandparent" | "cousin" | "other";
+
+type NewMemberForm = {
+  name: string;
+  dates: string;
+  relation: MemberRelation;
+  connectedTo: string;
 };
 
 type UnionData = {
@@ -62,7 +71,7 @@ function UnionNode({ data }: NodeProps<Node<UnionData, "union">>) {
 
 const nodeTypes = { person: PersonNode, union: UnionNode };
 
-const personStoryDetails: Record<string, PersonStoryDetails> = {
+const initialPersonStoryDetails: Record<string, PersonStoryDetails> = {
   adewale: {
     biography: "A patient builder who believed a family was strongest when everyone had a place at the table.",
     storyTitle: "A quiet kind of courage",
@@ -128,7 +137,7 @@ const personStoryDetails: Record<string, PersonStoryDetails> = {
   },
 };
 
-const nodes: Node[] = [
+const initialNodes: Node[] = [
   {
     id: "adewale",
     type: "person",
@@ -203,7 +212,7 @@ const nodes: Node[] = [
   },
 ];
 
-const edges: Edge[] = [
+const initialEdges: Edge[] = [
   { id: "adewale-union", source: "adewale", target: "union-parents", type: "smoothstep", style: { stroke: "#a9b8ab", strokeWidth: 1.5 } },
   { id: "sade-union", source: "sade", target: "union-parents", type: "smoothstep", style: { stroke: "#a9b8ab", strokeWidth: 1.5 } },
   { id: "union-funmi", source: "union-parents", target: "funmi", type: "smoothstep", style: { stroke: "#a9b8ab", strokeWidth: 1.5 } },
@@ -254,8 +263,121 @@ function PersonStoryPanel({
   );
 }
 
-export function FamilyTreeCanvas() {
+function getInitials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function getNewMemberPosition(anchor: Node, relation: MemberRelation, currentNodes: Node[]) {
+  const offsets: Record<MemberRelation, { x: number; y: number }> = {
+    parent: { x: 180, y: -145 },
+    child: { x: 180, y: 145 },
+    sibling: { x: 180, y: 0 },
+    partner: { x: 180, y: 0 },
+    grandparent: { x: 180, y: -145 },
+    cousin: { x: 180, y: 145 },
+    other: { x: 180, y: 100 },
+  };
+  const offset = offsets[relation];
+  let x = anchor.position.x + offset.x;
+  const y = Math.max(18, anchor.position.y + offset.y);
+
+  while (currentNodes.some((node) => Math.abs(node.position.x - x) < 145 && Math.abs(node.position.y - y) < 74)) {
+    x += 180;
+  }
+
+  return { x, y };
+}
+
+function AddFamilyMemberPanel({
+  people,
+  onClose,
+  onSubmit,
+}: {
+  people: Node[];
+  onClose: () => void;
+  onSubmit: (form: NewMemberForm) => void;
+}) {
+  const [form, setForm] = useState<NewMemberForm>({
+    name: "",
+    dates: "",
+    relation: "child",
+    connectedTo: people[0]?.id ?? "",
+  });
+
+  const updateField = <K extends keyof NewMemberForm>(field: K, value: NewMemberForm[K]) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!form.name.trim() || !form.connectedTo) return;
+    onSubmit({ ...form, name: form.name.trim(), dates: form.dates.trim() || "—" });
+  };
+
+  return (
+    <div className="family-tree-dialog-backdrop" onClick={onClose}>
+      <section className="family-tree-dialog" aria-label="Add a family member" aria-modal="true" role="dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="family-tree-dialog-header">
+          <div>
+            <span className="archive-panel-kicker">Grow your archive</span>
+            <h2>Add a family member</h2>
+            <p>Place someone new in the family tree and start keeping their story close.</p>
+          </div>
+          <button className="flow-story-close" onClick={onClose} aria-label="Close add family member form"><X size={17} /></button>
+        </div>
+
+        <form className="family-tree-member-form" onSubmit={handleSubmit}>
+          <label>
+            <span>Name</span>
+            <input autoFocus required value={form.name} onChange={(event) => updateField("name", event.target.value)} placeholder="e.g. Amina Bello" />
+          </label>
+          <label>
+            <span>Dates <small>optional</small></span>
+            <input value={form.dates} onChange={(event) => updateField("dates", event.target.value)} placeholder="e.g. 1998 —" />
+          </label>
+          <div className="family-tree-form-grid">
+            <label>
+              <span>Relationship</span>
+              <select value={form.relation} onChange={(event) => updateField("relation", event.target.value as MemberRelation)}>
+                <option value="child">Child</option>
+                <option value="parent">Parent</option>
+                <option value="sibling">Sibling</option>
+                <option value="partner">Partner</option>
+                <option value="grandparent">Grandparent</option>
+                <option value="cousin">Cousin</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label>
+              <span>Connect to</span>
+              <select value={form.connectedTo} onChange={(event) => updateField("connectedTo", event.target.value)}>
+                {people.map((person) => <option key={person.id} value={person.id}>{(person.data as PersonData).name}</option>)}
+              </select>
+            </label>
+          </div>
+          <p className="family-tree-form-note">This demo adds the member to the tree immediately. Their details can be expanded later.</p>
+          <div className="family-tree-dialog-actions">
+            <button className="button button-secondary button-md" type="button" onClick={onClose}>Cancel</button>
+            <button className="button button-primary button-md" type="submit"><Plus size={15} /> Add member</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+export function FamilyTreeCanvas({ onMemberCountChange }: { onMemberCountChange?: (count: number) => void }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [treeNodes, setTreeNodes] = useState<Node[]>(initialNodes);
+  const [treeEdges, setTreeEdges] = useState<Edge[]>(initialEdges);
+  const [storyDetails, setStoryDetails] = useState<Record<string, PersonStoryDetails>>(initialPersonStoryDetails);
+  const [isAddPanelOpen, setIsAddPanelOpen] = useState(false);
   const defaultEdgeOptions = useMemo(() => ({
     selectable: false,
     focusable: false,
@@ -265,18 +387,66 @@ export function FamilyTreeCanvas() {
     if (node.type === "person") setSelectedNodeId(node.id);
   }, []);
 
-  const selectedNode = selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) : undefined;
+  const handleAddMember = useCallback((form: NewMemberForm) => {
+    const anchor = treeNodes.find((node) => node.id === form.connectedTo);
+    if (!anchor) return;
+
+    const id = `member-${Date.now()}`;
+    const tone = (["clay", "moss", "blue", "gold"] as const)[treeNodes.length % 4];
+    const newMember: Node = {
+      id,
+      type: "person",
+      position: getNewMemberPosition(anchor, form.relation, treeNodes),
+      data: {
+        name: form.name,
+        dates: form.dates,
+        initials: getInitials(form.name),
+        tone,
+        relation: form.relation,
+      },
+    };
+    const source = form.relation === "parent" || form.relation === "grandparent" ? id : form.connectedTo;
+    const target = source === id ? form.connectedTo : id;
+    const newEdge: Edge = {
+      id: `${source}-${target}`,
+      source,
+      target,
+      type: "smoothstep",
+      style: { stroke: "#a9b8ab", strokeWidth: 1.5 },
+    };
+
+    setTreeNodes((current) => [...current, newMember]);
+    setTreeEdges((current) => [...current, newEdge]);
+    setStoryDetails((current) => ({
+      ...current,
+      [id]: {
+        biography: "This family member has just been added to the archive. Their story is waiting to be written.",
+        storyTitle: "A story waiting to be told",
+        storyStatus: "Draft",
+        storyCount: 0,
+        contributors: ["KM"],
+      },
+    }));
+    onMemberCountChange?.(treeNodes.filter((node) => node.type === "person").length + 1);
+    setIsAddPanelOpen(false);
+    setSelectedNodeId(id);
+  }, [onMemberCountChange, treeNodes]);
+
+  const selectedNode = selectedNodeId ? treeNodes.find((node) => node.id === selectedNodeId) : undefined;
   const selectedPerson = selectedNode?.type === "person" ? selectedNode.data as PersonData : undefined;
-  const selectedDetails = selectedNodeId ? personStoryDetails[selectedNodeId] : undefined;
+  const selectedDetails = selectedNodeId ? storyDetails[selectedNodeId] : undefined;
 
   return (
     <div className="family-tree-canvas" aria-label="Interactive family tree">
+      <button className="family-tree-add-button" onClick={(event) => { event.stopPropagation(); setSelectedNodeId(null); setIsAddPanelOpen(true); }}>
+        <Plus size={16} /> Add family member
+      </button>
       <ReactFlow
         defaultEdgeOptions={defaultEdgeOptions}
-        edges={edges}
+        edges={treeEdges}
         fitView
         fitViewOptions={{ padding: 0.22, minZoom: 0.72, maxZoom: 1.15 }}
-        nodes={nodes}
+        nodes={treeNodes}
         nodeTypes={nodeTypes}
         nodesConnectable={false}
         nodesDraggable={false}
@@ -291,6 +461,7 @@ export function FamilyTreeCanvas() {
       </ReactFlow>
       <div className="family-tree-legend"><span className="family-tree-legend-dot" /> Your branch <span className="family-tree-legend-line" /> Relationship</div>
       {selectedPerson && selectedDetails ? <PersonStoryPanel details={selectedDetails} onClose={() => setSelectedNodeId(null)} person={selectedPerson} /> : null}
+      {isAddPanelOpen ? <AddFamilyMemberPanel onClose={() => setIsAddPanelOpen(false)} onSubmit={handleAddMember} people={treeNodes.filter((node) => node.type === "person")} /> : null}
     </div>
   );
 }
