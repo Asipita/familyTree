@@ -109,20 +109,21 @@ export async function saveFamily(user: AuthUser, input: FamilyState) {
   }
   if (input.version !== 1 || !input.people.some((person) => person.id === view.viewerPersonId)) throw new Error("Invalid family data.");
   const safeState = { ...input, viewerId: view.viewerPersonId };
-  await db.transaction(async (tx) => {
-    await tx.delete(storyReviews).where(eq(storyReviews.viewId, view.id));
-    await tx.delete(stories).where(eq(stories.viewId, view.id));
-    await tx.delete(familyLinks).where(eq(familyLinks.viewId, view.id));
-    await tx.delete(requests).where(eq(requests.viewId, view.id));
-    await tx.delete(people).where(eq(people.viewId, view.id));
-    await tx.insert(people).values(safeState.people.map((person) => ({ viewId: view.id, id: person.id, name: person.name, born: person.born, died: person.died ?? null, living: person.living, biography: person.biography, biographyBy: person.biographyBy ?? null, accountUserId: person.id === view.viewerPersonId ? user.id : null })));
-    if (safeState.links.length) await tx.insert(familyLinks).values(safeState.links.map((link) => ({ viewId: view.id, id: link.id, kind: link.kind, fromPersonId: link.from, toPersonId: link.to })));
-    if (safeState.stories.length) await tx.insert(stories).values(safeState.stories.map((story) => ({ viewId: view.id, id: story.id, subjectId: story.subjectId, authorId: story.authorId, title: story.title, html: story.html, source: story.source, status: story.status, updated: story.updated })));
-    const reviews = safeState.stories.flatMap((story) => story.reviews.map((review) => ({ viewId: view.id, storyId: story.id, personId: review.personId, note: review.note, decision: review.decision })));
-    if (reviews.length) await tx.insert(storyReviews).values(reviews);
-    if (safeState.requests.length) await tx.insert(requests).values(safeState.requests.map((request) => ({ viewId: view.id, id: request.id, kind: request.kind, personId: request.personId, detail: request.detail, status: request.status, created: request.created })));
-    await tx.update(familyViews).set({ viewerPersonId: safeState.viewerId, updatedAt: new Date() }).where(eq(familyViews.id, view.id));
-    await tx.update(familySettings).set({ ...safeState.settings, updatedAt: new Date() }).where(eq(familySettings.viewId, view.id));
-  });
+  const operations: any[] = [
+    db.delete(storyReviews).where(eq(storyReviews.viewId, view.id)),
+    db.delete(stories).where(eq(stories.viewId, view.id)),
+    db.delete(familyLinks).where(eq(familyLinks.viewId, view.id)),
+    db.delete(requests).where(eq(requests.viewId, view.id)),
+    db.delete(people).where(eq(people.viewId, view.id)),
+    db.insert(people).values(safeState.people.map((person) => ({ viewId: view.id, id: person.id, name: person.name, born: person.born, died: person.died ?? null, living: person.living, biography: person.biography, biographyBy: person.biographyBy ?? null, accountUserId: person.id === view.viewerPersonId ? user.id : null }))),
+    ...(safeState.links.length ? [db.insert(familyLinks).values(safeState.links.map((link) => ({ viewId: view.id, id: link.id, kind: link.kind, fromPersonId: link.from, toPersonId: link.to })))] : []),
+    ...(safeState.stories.length ? [db.insert(stories).values(safeState.stories.map((story) => ({ viewId: view.id, id: story.id, subjectId: story.subjectId, authorId: story.authorId, title: story.title, html: story.html, source: story.source, status: story.status, updated: story.updated })))] : []),
+    db.update(familyViews).set({ viewerPersonId: safeState.viewerId, updatedAt: new Date() }).where(eq(familyViews.id, view.id)),
+    db.update(familySettings).set({ ...safeState.settings, updatedAt: new Date() }).where(eq(familySettings.viewId, view.id)),
+  ];
+  const reviews = safeState.stories.flatMap((story) => story.reviews.map((review) => ({ viewId: view.id, storyId: story.id, personId: review.personId, note: review.note, decision: review.decision })));
+  if (reviews.length) operations.push(db.insert(storyReviews).values(reviews));
+  if (safeState.requests.length) operations.push(db.insert(requests).values(safeState.requests.map((request) => ({ viewId: view.id, id: request.id, kind: request.kind, personId: request.personId, detail: request.detail, status: request.status, created: request.created }))));
+  await db.batch(operations as never);
   return readView(view.id);
 }
