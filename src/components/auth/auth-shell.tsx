@@ -132,7 +132,7 @@ export function AuthShell({ mode }: AuthShellProps) {
         ? await authClient.signUp.email({ email, password, name: String(data.get("name") ?? "").trim() })
         : await authClient.signIn.email({ email, password });
       if (result.error) throw result.error;
-      if (isCreate) setSubmitted(true);
+      if (isCreate) router.replace("/onboarding");
       else router.replace("/tree");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "We could not complete that request. Please try again.");

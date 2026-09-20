@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, Check, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState, type FormEvent, type SelectHTMLAttributes } from "react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FamilyTreeLogo } from "@/components/brand/family-tree-logo";
 import { useFamily } from "@/components/family-provider";
@@ -10,45 +10,56 @@ import { relativeLink, type Person, type RelativeKind } from "@/lib/family";
 type ConnectionChoice = "parent" | "child" | "partner" | RelativeKind;
 type ConnectionDraft = { id: string; name: string; born: string; gender: "" | "male" | "female"; relation: ConnectionChoice };
 
-const connectionOptions: { value: ConnectionChoice; label: string; provisional?: boolean }[] = [
-  { value: "parent", label: "Parent" },
-  { value: "child", label: "Child" },
-  { value: "partner", label: "Partner" },
-  { value: "sibling", label: "Sibling", provisional: true },
-  { value: "grandparent", label: "Grandparent", provisional: true },
-  { value: "uncle", label: "Uncle", provisional: true },
-  { value: "aunt", label: "Aunt", provisional: true },
-  { value: "cousin", label: "Cousin", provisional: true },
+const connectionOptions: { value: ConnectionChoice; label: string }[] = [
+  { value: "parent", label: "Parent" }, { value: "child", label: "Child" }, { value: "partner", label: "Partner" },
+  { value: "sibling", label: "Sibling" }, { value: "grandparent", label: "Grandparent" }, { value: "uncle", label: "Uncle" }, { value: "aunt", label: "Aunt" }, { value: "cousin", label: "Cousin" },
 ];
+const provisionalRelations = ["sibling", "grandparent", "uncle", "aunt", "cousin"];
+
+function SelectField({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: React.ReactNode }) {
+  return <span className="onboarding-select"><select {...props}>{children}</select><ChevronDown size={16} aria-hidden="true" /></span>;
+}
+
+function Stepper({ step }: { step: number }) {
+  return <ol className="onboarding-stepper" aria-label="Onboarding progress">{["Your details", "Add connections", "Review"].map((label, index) => { const number = index + 1; return <li className={number === step ? "is-current" : number < step ? "is-complete" : ""} key={label}><span>{number < step ? <Check size={14} /> : number}</span><small>{label}</small></li>; })}</ol>;
+}
 
 export function OnboardingPage() {
   const router = useRouter();
   const { state, ready, error, update } = useFamily();
   const viewer = state.people.find((person) => person.id === state.viewerId);
-  const [name, setName] = useState(viewer?.name === "You" ? "" : viewer?.name ?? "");
-  const [born, setBorn] = useState(viewer?.born ?? "");
-  const [gender, setGender] = useState<"" | "male" | "female">(viewer?.gender ?? "");
+  const [step, setStep] = useState(1);
+  const [name, setName] = useState("");
+  const [born, setBorn] = useState("");
+  const [gender, setGender] = useState<"" | "male" | "female">("");
   const [connections, setConnections] = useState<ConnectionDraft[]>([]);
   const [connectionName, setConnectionName] = useState("");
   const [connectionBorn, setConnectionBorn] = useState("");
   const [connectionGender, setConnectionGender] = useState<"" | "male" | "female">("");
   const [connectionRelation, setConnectionRelation] = useState<ConnectionChoice>("parent");
   const [formError, setFormError] = useState("");
+  const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
-    if (ready && state.onboardingComplete) router.replace("/tree");
-  }, [ready, router, state.onboardingComplete]);
+    if (!ready || !viewer) return;
+    if (viewer.name !== "You" && !name) setName(viewer.name);
+    if (viewer.born && !born) setBorn(viewer.born);
+    if (viewer.gender && !gender) setGender(viewer.gender);
+  }, [born, gender, name, ready, viewer]);
+  useEffect(() => { if (ready && state.onboardingComplete) router.replace("/tree"); }, [ready, router, state.onboardingComplete]);
 
+  function continueDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!name.trim()) { setFormError("Add your name to continue."); return; }
+    if (!born) { setFormError("Add your date of birth to continue."); return; }
+    setFormError(""); setStep(2);
+  }
   function addConnection() {
-    if (!connectionName.trim()) { setFormError("Give this person a name before adding them."); return; }
+    if (!connectionName.trim()) { setFormError("Add a name before creating a connection."); return; }
     setConnections((current) => [...current, { id: crypto.randomUUID(), name: connectionName.trim(), born: connectionBorn, gender: connectionGender, relation: connectionRelation }]);
     setConnectionName(""); setConnectionBorn(""); setConnectionGender(""); setConnectionRelation("parent"); setFormError("");
   }
-
-  function finish(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!name.trim()) { setFormError("Add your name to begin."); return; }
-    if (!born) { setFormError("Add your date of birth to continue."); return; }
+  function finish() {
     if (!viewer) return;
     if (update((current) => {
       const people: Person[] = current.people.map((person) => person.id === current.viewerId ? { ...person, name: name.trim(), born, gender: gender || undefined, living: true, accountId: person.accountId } : person);
@@ -72,13 +83,12 @@ export function OnboardingPage() {
   return <main className="onboarding-page">
     <header className="onboarding-header"><a href="/" className="onboarding-brand"><FamilyTreeLogo size={34} /><span>FamilyTree</span></a><span className="onboarding-progress"><span /> Your first branch</span></header>
     <div className="onboarding-shell">
-      <section className="onboarding-intro"><span className="ft-kicker">Before the branches spread</span><h1>Start with your place in the family.</h1><p>Tell us enough to place you accurately. You can add the people you remember now, or begin with just yourself.</p><div className="onboarding-tree-mark" aria-hidden="true"><span /><span /><span /><i /><i /><i /></div></section>
-      <form className="onboarding-form" onSubmit={finish}>
-        <section className="onboarding-card"><div className="onboarding-card-heading"><span className="onboarding-step">01</span><div><h2>Your details</h2><p>Your biography will be written by family.</p></div></div><div className="onboarding-grid"><label>Name<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required maxLength={100} placeholder="Your full name" /></label><label>Date of birth<input value={born} onChange={(event) => setBorn(event.target.value)} type="date" required max={new Date().toISOString().slice(0, 10)} /></label><label>Gender <small>optional</small><select value={gender} onChange={(event) => setGender(event.target.value as "" | "male" | "female")}><option value="">Choose if you wish</option><option value="female">Female</option><option value="male">Male</option></select></label></div></section>
-        <section className="onboarding-card"><div className="onboarding-card-heading"><span className="onboarding-step">02</span><div><h2>Who do you remember?</h2><p>Add connections now, or come back to them from your tree.</p></div></div><div className="onboarding-connection-form"><label>Name<input value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="A parent, uncle, or cousin" /></label><label>Relationship<select value={connectionRelation} onChange={(event) => setConnectionRelation(event.target.value as ConnectionChoice)}>{connectionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}{option.provisional ? " · connector needed" : ""}</option>)}</select></label><label>Date of birth <small>optional</small><input value={connectionBorn} onChange={(event) => setConnectionBorn(event.target.value)} type="date" max={new Date().toISOString().slice(0, 10)} /></label><label>Gender <small>optional</small><select value={connectionGender} onChange={(event) => setConnectionGender(event.target.value as "" | "male" | "female")}><option value="">Not set</option><option value="female">Female</option><option value="male">Male</option></select></label><button className="button button-secondary" type="button" onClick={addConnection}><Plus size={15} /> Add connection</button></div>{connections.length ? <div className="onboarding-connections">{connections.map((connection) => <div className="onboarding-connection" key={connection.id}><span className="ft-avatar">{connection.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span><span><strong>{connection.name}</strong><small>{connectionOptions.find((option) => option.value === connection.relation)?.label}</small></span><button type="button" aria-label={`Remove ${connection.name}`} onClick={() => setConnections((current) => current.filter((item) => item.id !== connection.id))}><Trash2 size={15} /></button></div>)}</div> : <p className="onboarding-empty">No connections yet. You can add your first relative from the tree.</p>}</section>
-        {formError && <p className="onboarding-error" role="alert">{formError}</p>}{error && <p className="onboarding-error" role="alert">{error}</p>}
-        <div className="onboarding-actions"><span><Check size={15} /> You can edit details later</span><button className="button button-primary button-lg" type="submit">Open my tree <ArrowRight size={16} /></button></div>
-      </form>
+      <section className="onboarding-intro"><span className="ft-kicker">Set up your tree</span><h1>Start with your place in the family.</h1><p>Add your details, then connect the people you remember.</p><div className="onboarding-tree-mark" aria-hidden="true"><span /><span /><span /><i /><i /><i /></div></section>
+      <section className="onboarding-form"><Stepper step={step} />
+        {step === 1 && <form className="onboarding-card" onSubmit={continueDetails}><div className="onboarding-card-heading"><span className="onboarding-step">01</span><div><h2>Your details</h2><p>Tell us about you.</p></div></div><div className="onboarding-grid"><label>Name<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required maxLength={100} placeholder="Your full name" /></label><label>Date of birth<input value={born} onChange={(event) => setBorn(event.target.value)} type="date" required max={today} /></label><label>Gender <small>optional</small><SelectField value={gender} onChange={(event) => setGender(event.target.value as "" | "male" | "female")}><option value="">Choose if you wish</option><option value="female">Female</option><option value="male">Male</option></SelectField></label></div>{formError && <p className="onboarding-error" role="alert">{formError}</p>}<div className="onboarding-actions"><span>Step 1 of 3</span><button className="button button-primary" type="submit">Continue <ArrowRight size={16} /></button></div></form>}
+        {step === 2 && <section className="onboarding-card"><div className="onboarding-card-heading"><span className="onboarding-step">02</span><div><h2>Add connections</h2><p>Who do you remember?</p></div></div><div className="onboarding-connection-form"><label>Name<input value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="A parent, uncle, or cousin" /></label><label>Relationship<SelectField value={connectionRelation} onChange={(event) => setConnectionRelation(event.target.value as ConnectionChoice)}>{connectionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectField></label><label>Date of birth <small>optional</small><input value={connectionBorn} onChange={(event) => setConnectionBorn(event.target.value)} type="date" max={today} /></label><label>Gender <small>optional</small><SelectField value={connectionGender} onChange={(event) => setConnectionGender(event.target.value as "" | "male" | "female")}><option value="">Not set</option><option value="female">Female</option><option value="male">Male</option></SelectField></label><button className="button button-secondary" type="button" onClick={addConnection}><Plus size={15} /> Add person</button></div>{connections.length ? <div className="onboarding-connections">{connections.map((connection) => <div className="onboarding-connection" key={connection.id}><span className="ft-avatar">{connection.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span><span><strong>{connection.name}</strong><small>{connectionOptions.find((option) => option.value === connection.relation)?.label}{provisionalRelations.includes(connection.relation) ? " · provisional" : ""}</small></span><button type="button" aria-label={`Remove ${connection.name}`} onClick={() => setConnections((current) => current.filter((item) => item.id !== connection.id))}><Trash2 size={15} /></button></div>)}</div> : <p className="onboarding-empty">You can add people later.</p>}{formError && <p className="onboarding-error" role="alert">{formError}</p>}<div className="onboarding-actions"><button className="button button-secondary" type="button" onClick={() => { setFormError(""); setStep(1); }}><ArrowLeft size={16} /> Back</button><button className="button button-primary" type="button" onClick={() => { setFormError(""); setStep(3); }}>Continue <ArrowRight size={16} /></button></div></section>}
+        {step === 3 && <section className="onboarding-card"><div className="onboarding-card-heading"><span className="onboarding-step">03</span><div><h2>Review</h2><p>Check your starting point.</p></div></div><div className="onboarding-review"><div><small>Your profile</small><strong>{name}</strong><span>{born}{gender ? ` · ${gender === "female" ? "Female" : "Male"}` : ""}</span></div><div><small>Connections</small>{connections.length ? connections.map((connection) => <span className="onboarding-review-person" key={connection.id}><strong>{connection.name}</strong><em>{connectionOptions.find((option) => option.value === connection.relation)?.label}{provisionalRelations.includes(connection.relation) ? " · provisional" : ""}</em></span>) : <span>No connections yet</span>}</div></div>{formError && <p className="onboarding-error" role="alert">{formError}</p>}<div className="onboarding-actions"><button className="button button-secondary" type="button" onClick={() => setStep(2)}><ArrowLeft size={16} /> Back</button><button className="button button-primary" type="button" onClick={finish}>Open my tree <ArrowRight size={16} /></button></div></section>}
+      </section>
     </div>
   </main>;
 }
