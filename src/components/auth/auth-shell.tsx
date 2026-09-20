@@ -175,7 +175,7 @@ export function AuthShell({ mode }: AuthShellProps) {
               {!isForgot ? (
                 <label className="auth-field"><FieldLabel>Password</FieldLabel><span className="auth-input-wrap"><LockKeyhole size={16} /><input name="password" type={showPassword ? "text" : "password"} autoComplete={isCreate ? "new-password" : "current-password"} placeholder="At least 8 characters" minLength={8} required /><button className="auth-password-toggle" type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>
               ) : null}
-              {mode === "sign-in" ? <div className="auth-form-options"><label className="auth-checkbox"><input type="checkbox" name="remember" /><span /> Keep me signed in</label><Link href={authRoute("/auth/forgot-password")}>Forgot password?</Link></div> : null}
+              {mode === "sign-in" ? <div className="auth-form-options"><span className="auth-session-note">Secure session</span><Link href={authRoute("/auth/forgot-password")}>Forgot password?</Link></div> : null}
               {isCreate ? <div className="auth-trust-note"><ShieldCheck size={15} /><span>Your account is personal. Your biography is written by relatives.</span></div> : null}
               {error ? <p className="auth-error" role="alert">{error}</p> : null}
               <button className="button button-primary button-lg auth-submit" type="submit" disabled={busy || sessionPending}>{busy ? "Working…" : isForgot ? <><Send size={16} /> Send recovery note</> : isCreate ? <><Sparkles size={16} /> Create my account</> : <>Sign in <ArrowUpRight size={16} /></>}</button>
