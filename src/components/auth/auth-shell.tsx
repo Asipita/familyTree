@@ -110,8 +110,8 @@ export function AuthShell({ mode }: AuthShellProps) {
   const { data: session, isPending: sessionPending } = authClient.useSession();
 
   useEffect(() => {
-    if (!sessionPending && session?.user) router.replace("/tree");
-  }, [router, session?.user, sessionPending]);
+    if (!sessionPending && session?.user) router.replace(isCreate ? "/onboarding" : "/tree");
+  }, [isCreate, router, session?.user, sessionPending]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -128,8 +128,13 @@ export function AuthShell({ mode }: AuthShellProps) {
       }
 
       const password = String(data.get("password") ?? "");
+      const firstName = String(data.get("firstName") ?? "").trim();
+      const middleName = String(data.get("middleName") ?? "").trim();
+      const surname = String(data.get("surname") ?? "").trim();
+      if (isCreate && (!firstName || !surname)) throw new Error("Enter your first name and surname.");
+      const name = [firstName, middleName, surname].filter(Boolean).join(" ");
       const result = isCreate
-        ? await authClient.signUp.email({ email, password, name: String(data.get("name") ?? "").trim() })
+        ? await authClient.signUp.email({ email, password, name })
         : await authClient.signIn.email({ email, password });
       if (result.error) throw result.error;
       if (isCreate) router.replace("/onboarding");
@@ -169,7 +174,11 @@ export function AuthShell({ mode }: AuthShellProps) {
           ) : (
             <form className="auth-form" onSubmit={handleSubmit}>
               {isCreate ? (
-                <label className="auth-field"><FieldLabel>Your name</FieldLabel><input name="name" autoComplete="name" placeholder="Kemi Martins" required /></label>
+                <div className="auth-name-fields">
+                  <label className="auth-field"><FieldLabel>First name</FieldLabel><input name="firstName" autoComplete="given-name" required maxLength={100} /></label>
+                  <label className="auth-field"><FieldLabel>Surname</FieldLabel><input name="surname" autoComplete="family-name" required maxLength={100} /></label>
+                  <label className="auth-field auth-middle-name"><FieldLabel optional>Middle name</FieldLabel><input name="middleName" autoComplete="additional-name" maxLength={100} /></label>
+                </div>
               ) : null}
               <label className="auth-field"><FieldLabel>Email address</FieldLabel><span className="auth-input-wrap"><Mail size={16} /><input name="email" type="email" autoComplete="email" placeholder="you@example.com" required /></span></label>
               {!isForgot ? (
