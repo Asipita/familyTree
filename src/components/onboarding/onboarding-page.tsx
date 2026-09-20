@@ -52,7 +52,7 @@ export function OnboardingPage() {
     if (!viewer) return;
     if (update((current) => {
       const people: Person[] = current.people.map((person) => person.id === current.viewerId ? { ...person, name: name.trim(), born, gender: gender || undefined, living: true, accountId: person.accountId } : person);
-      const links = [...current.links];
+      let links = [...current.links];
       for (const connection of connections) {
         const id = connection.id;
         people.push({ id, name: connection.name, born: connection.born, living: true, biography: "", ...(connection.gender ? { gender: connection.gender } : {}) });
@@ -61,6 +61,7 @@ export function OnboardingPage() {
         else if (connection.relation === "partner") links.push({ id: crypto.randomUUID(), kind: "partner", from: current.viewerId, to: id });
         else links.push(relativeLink(connection.relation, id, current.viewerId));
       }
+      if (links.some((link) => link.kind === "parent" && link.to === current.viewerId)) links = links.map((link) => link.kind === "relative" && link.complete === false && (link.from === current.viewerId || link.to === current.viewerId) ? { ...link, complete: true } : link);
       return { ...current, onboardingComplete: true, people, links };
     })) router.replace("/tree");
   }
