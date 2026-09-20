@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./family.css";
+import { FamilyProvider } from "@/components/family-provider";
 
 export const metadata: Metadata = {
   title: "FamilyTree — A living record of where you come from",
@@ -14,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body><FamilyProvider>{children}</FamilyProvider></body>
     </html>
   );
 }

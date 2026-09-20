@@ -1,120 +1,61 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import Underline from "@tiptap/extension-underline";
-import TiptapLink from "@tiptap/extension-link";
-import {
-  ArrowLeft,
-  Bold,
-  Check,
-  ChevronDown,
-  Cloud,
-  Eye,
-  Heading1,
-  Heading2,
-  Italic,
-  Link2,
-  List,
-  ListOrdered,
-  Minus,
-  MoreHorizontal,
-  Quote,
-  Redo2,
-  Send,
-  Strikethrough,
-  Underline as UnderlineIcon,
-  Undo2,
-} from "lucide-react";
+import { ArrowLeft, Bold, Check, Eye, Heading1, Heading2, Italic, Link2, List, ListOrdered, Minus, Quote, Redo2, Send, Strikethrough, Underline as UnderlineIcon, Undo2 } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { useFamily } from "@/components/family-provider";
+import { canWrite, canEditStory, connectedPeople, putStory, type Story } from "@/lib/family";
+import { Empty } from "@/components/family/workspace";
+import { StoryDocument } from "@/components/family/pages";
 
-type ToolbarButtonProps = {
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-};
-
+type ToolbarButtonProps = { label: string; active?: boolean; onClick: () => void; children: React.ReactNode };
 function ToolbarButton({ active = false, children, label, onClick }: ToolbarButtonProps) {
-  return <button className={`story-toolbar-button ${active ? "is-active" : ""}`} onClick={onClick} aria-label={label} title={label}>{children}</button>;
+  return <button type="button" className={`story-toolbar-button ${active ? "is-active" : ""}`} onClick={onClick} aria-label={label} aria-pressed={active} title={label}>{children}</button>;
 }
-
-export function StoryEditor() {
-  const [saveState, setSaveState] = useState("Saved to demo archive");
-  const saveTimer = useRef<number | null>(null);
+export function StoryEditor({ storyId, subjectId }: { storyId?: string; subjectId?: string }) {
+  const { state } = useFamily();
+  const story = state.stories.find(s => s.id === storyId);
+  const subject = subjectId ?? story?.subjectId;
+  if (storyId && !story) return <div className="ft-page"><Empty title="Story not found"><Link href="/stories">Back to stories</Link></Empty></div>;
+  if ((story && !canEditStory(state.viewerId, story)) || (subject && !canWrite(state.viewerId, subject))) return <div className="ft-page"><Empty title="This story needs another voice"><p>You cannot write your own biography or edit another relative’s contribution.</p><Link href="/stories">Back to stories →</Link></Empty></div>;
+  if (subject && !state.people.some(p => p.id === subject)) return <div className="ft-page"><Empty title="Person not found" /></div>;
+  return <WritingDesk key={storyId ?? subjectId ?? "new"} story={story} subjectId={subject} />;
+}
+function WritingDesk({ story, subjectId }: { story?: Story; subjectId?: string }) {
+  const { state, update } = useFamily(); const router = useRouter();
+  const subjects = connectedPeople(state).filter(p => canWrite(state.viewerId, p.id));
+  const [subject, setSubject] = useState(subjectId ?? subjects[0]?.id ?? "");
+  const [title, setTitle] = useState(story?.title ?? "");
+  const [source, setSource] = useState(story?.source ?? "");
+  const [saveState, setSaveState] = useState(story ? "Saved on this device" : "New draft");
+  const [preview, setPreview] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false); const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
+  const [id, setId] = useState(story?.id ?? "");
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      TiptapLink.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
-      Placeholder.configure({ placeholder: "Begin with the moment you remember most clearly…" }),
-    ],
-    content: `
-      <p>She never called it leadership. She just noticed what needed doing, and did it before anyone asked.</p>
-      <p>In the town where my mother grew up, people knew Funmi by the way she made room. There was always another chair, another plate, another person who needed to be heard.</p>
-      <h2>What she gave us</h2>
-      <p>She taught us that a family is not only the people you are born to. It is also the people you make space for, especially when it is inconvenient.</p>
-      <blockquote><p>“If there is enough for one, there is enough to share.”</p></blockquote>
-      <p>I still hear her say it whenever the table feels too full.</p>
-    `,
-    onUpdate: () => {
-      setSaveState("Saving…");
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
-      saveTimer.current = window.setTimeout(() => setSaveState("Saved just now"), 650);
-    },
+    immediatelyRender: false,
+    extensions: [StarterKit.configure({ link: { openOnClick: false } }), Placeholder.configure({ placeholder: "Begin with a moment you remember…" })],
+    content: story?.html ?? "<p></p>",
+    onUpdate: () => setSaveState("Unsaved changes"),
   });
-
-  const addLink = () => {
+  if (!subjects.length) return <div className="ft-page"><Empty title="Start with a relative"><p>Add someone to your tree before writing their story.</p><Link className="button button-primary" href="/tree">Open my tree</Link></Empty></div>;
+  const person = state.people.find(p => p.id === subject)!;
+  function save(status: Story["status"]) {
     if (!editor) return;
-    const url = window.prompt("Paste a link");
-    if (url) editor.chain().focus().setLink({ href: url }).run();
-  };
-
-  return (
-    <main className="story-editor-page">
-      <header className="story-editor-topbar">
-        <div className="story-breadcrumbs">
-          <Link href="/archive" className="story-back-link"><ArrowLeft size={15} /> Back to tree</Link>
-          <span className="story-breadcrumb-divider">/</span>
-          <span>Stories</span>
-          <span className="story-breadcrumb-divider">/</span>
-          <strong>New story</strong>
-        </div>
-        <div className="story-topbar-actions">
-          <span className="story-save-state"><Cloud size={14} /> {saveState}</span>
-          <button className="story-topbar-icon" aria-label="More story options"><MoreHorizontal size={18} /></button>
-          <Button variant="secondary" size="sm"><Eye size={15} /> Preview</Button>
-          <Button variant="dark" size="sm"><Send size={14} /> Send for review</Button>
-        </div>
-      </header>
-
-      <div className="story-editor-layout">
-        <aside className="story-context-rail">
-          <span className="story-rail-kicker">Writing for</span>
-          <div className="story-person-card">
-            <span className="story-person-avatar">FN</span>
-            <span><strong>Funmi N. Adebayo</strong><small>Mother · 1948 — 2021</small></span>
-            <ChevronDown size={15} />
-          </div>
-          <div className="story-rail-divider" />
-          <span className="story-rail-kicker">Story details</span>
-          <div className="story-detail-row"><span>Status</span><strong className="story-draft-badge">Draft</strong></div>
-          <div className="story-detail-row"><span>Visibility</span><strong>Family only</strong></div>
-          <div className="story-detail-row"><span>Contributors</span><strong>3 family members</strong></div>
-          <div className="story-rail-prompt"><span>Keep it yours</span><p>Write what only your family would know. The small details are often the ones that stay.</p></div>
-          <Link href="/archive" className="story-rail-back"><ArrowLeft size={14} /> Return to family tree</Link>
-        </aside>
-
-        <section className="story-editor-sheet" aria-label="Story editor">
-          <div className="story-editor-heading">
-            <span className="story-editor-eyebrow">A story worth carrying forward</span>
-            <input className="story-title-input" aria-label="Story title" defaultValue="The woman who made room" />
-            <div className="story-title-meta"><span>About Funmi N. Adebayo</span><span>·</span><span>Written by Kemi Martins</span></div>
-          </div>
-          <div className="story-toolbar" role="toolbar" aria-label="Text formatting">
+    const storyId = id || crypto.randomUUID();
+    const next: Story = { id: storyId, subjectId: subject, authorId: state.viewerId, title: title.trim(), html: editor.getHTML(), source, status, updated: new Date().toISOString(), reviews: [] };
+    if (update(s => putStory(s, next))) { setId(storyId); setSaveState("Saved on this device"); if (status === "In review") router.push(`/stories/${storyId}`); }
+  }
+  const addLink = () => { setUrl(editor?.getAttributes("link").href ?? ""); setLinkOpen(!linkOpen); };
+  return <div className="ft-writing">
+    <header className="ft-writing-bar"><Link href="/stories" className="ft-back"><ArrowLeft size={16} /> Stories</Link><span role="status">{saveState}</span><div className="ft-actions"><button className="button button-secondary button-sm" onClick={() => setPreview(!preview)}><Eye size={15} />{preview ? "Write" : "Preview"}</button><button className="button button-secondary button-sm" onClick={() => save("Draft")}>Save draft</button><button className="button button-primary button-sm" onClick={() => save("In review")}><Send size={15} />Send for review</button></div></header>
+    <div className="ft-writing-layout"><aside className="ft-side-note"><span className="ft-kicker">Writing about</span><label className="ft-field">Person<select disabled={Boolean(story)} value={subject} onChange={e => { setSubject(e.target.value); setSaveState("Unsaved changes"); }}>{subjects.map(p => <option value={p.id} key={p.id}>{p.name}</option>)}</select></label><p>A story by {state.people.find(p => p.id === state.viewerId)?.name}.</p><label className="ft-field">Source or context<textarea value={source} onChange={e => { setSource(e.target.value); setSaveState("Unsaved changes"); }} placeholder="A memory, conversation, letter, or photograph" /></label><p className="ft-muted">Family can review the details before this is published.</p></aside>
+    <section className="story-editor-sheet"><div className="story-editor-heading"><span className="story-editor-eyebrow">About {person.name}</span><input className="story-title-input" aria-label="Story title" value={title} placeholder="Give this memory a title" maxLength={180} onChange={e => { setTitle(e.target.value); setSaveState("Unsaved changes"); }} /></div>
+    {!preview && <>          <div className="story-toolbar" role="toolbar" aria-label="Text formatting">
             <div className="story-toolbar-group">
               <ToolbarButton label="Undo" onClick={() => editor?.chain().focus().undo().run()}><Undo2 size={16} /></ToolbarButton>
               <ToolbarButton label="Redo" onClick={() => editor?.chain().focus().redo().run()}><Redo2 size={16} /></ToolbarButton>
@@ -137,10 +78,10 @@ export function StoryEditor() {
               <ToolbarButton label="Add link" active={editor?.isActive("link")} onClick={addLink}><Link2 size={16} /></ToolbarButton>
             </div>
           </div>
-          <div className="story-editor-body"><EditorContent editor={editor} /></div>
-          <div className="story-editor-footer"><span>Tip: Type <kbd>/</kbd> to think in blocks</span><span><Check size={13} /> {saveState}</span></div>
-        </section>
-      </div>
-    </main>
-  );
+
+    {linkOpen && <form className="ft-link-form" onSubmit={e => { e.preventDefault(); if (!/^https?:\/\//i.test(url)) { setError("Use a link beginning with https:// or http://"); return; } editor?.chain().focus().setLink({ href: url }).run(); setLinkOpen(false); setError(""); }}><label>Link URL<input type="url" required value={url} onChange={e => setUrl(e.target.value)} /></label><button className="button button-secondary button-sm">Add link</button>{error && <p role="alert">{error}</p>}</form>}
+    <div className="story-editor-body"><EditorContent editor={editor} /></div></>}
+    {preview && <StoryDocument html={editor?.getHTML() ?? ""} />}
+    <div className="story-editor-footer"><span>Written by family, reviewed together.</span><span><Check size={13} />{saveState}</span></div></section></div>
+  </div>;
 }

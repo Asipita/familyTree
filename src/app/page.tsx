@@ -67,20 +67,20 @@ export default function Home() {
         </div>
         <div className="nav-actions">
           <a className="nav-login" href="/auth/sign-in">Sign in</a>
-          <a className="button button-dark button-sm" href="/auth/create">Start your archive <ArrowUpRight size={15} /></a>
+          <a className="button button-dark button-sm" href="/auth/create">Start your tree <ArrowUpRight size={15} /></a>
         </div>
         <button className="mobile-menu" aria-label="Open menu"><Menu size={21} /></button>
       </nav>
 
       <section className="hero shell" id="top">
         <div className="hero-copy">
-          <div className="eyebrow"><span className="eyebrow-line" /> A living family archive</div>
+          <div className="eyebrow"><span className="eyebrow-line" /> A connected family history</div>
           <h1>The people who made your family possible deserve <em>more than a name and a date.</em></h1>
           <p className="hero-intro">
             FamilyTree gives your family a beautiful, trusted place to preserve the lives, lessons, and legacies that shaped you.
           </p>
           <div className="hero-actions">
-            <a className="button button-primary button-lg" href="/auth/create">Begin your family story <ArrowUpRight size={17} /></a>
+            <a className="button button-primary button-lg" href="/auth/create">Start your tree <ArrowUpRight size={17} /></a>
             <a className="text-link" href="#stories">Read a family story <ChevronRight size={16} /></a>
           </div>
           <div className="trust-note">
@@ -94,10 +94,10 @@ export default function Home() {
         <div className="hero-archive" aria-label="Preview of a family archive">
           <div className="archive-glow" />
           <div className="archive-card">
-            <div className="archive-topline"><span>THE ADEBAYO FAMILY</span><span>EST. 1948</span></div>
+            <div className="archive-topline"><span>FROM KEMI’S POINT OF VIEW</span><span>EST. 1948</span></div>
             <div className="archive-title-row">
               <div>
-                <span className="archive-kicker">Our living archive</span>
+                <span className="archive-kicker">Our connected lives</span>
                 <h2>Where we come from</h2>
               </div>
               <span className="archive-seal"><ShieldCheck size={21} strokeWidth={1.5} /></span>
@@ -148,8 +148,8 @@ export default function Home() {
           <Sparkles size={21} strokeWidth={1.5} />
           <h2>Start with one story.</h2>
           <p>The rest of your family history can meet you there.</p>
-          <a className="button button-dark button-lg" href="/auth/create">Create your family archive <ArrowUpRight size={17} /></a>
-          <span className="cta-note"><Check size={14} /> Free to begin · Your family owns its stories</span>
+          <a className="button button-dark button-lg" href="/auth/create">Start your family tree <ArrowUpRight size={17} /></a>
+          <span className="cta-note"><Check size={14} /> Start with yourself · Let family tell your story</span>
         </div>
         <div className="cta-decoration cta-decoration-right">✳</div>
       </section>

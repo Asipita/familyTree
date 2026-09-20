@@ -3,7 +3,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 
 export const metadata: Metadata = {
   title: "Sign in · FamilyTree",
-  description: "Return to your FamilyTree archive.",
+  description: "Return to your FamilyTree account.",
 };
 
 export default function SignInPage() {
