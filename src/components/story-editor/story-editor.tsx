@@ -31,7 +31,7 @@ function WritingDesk({ story, subjectId }: { story?: Story; subjectId?: string }
   const [subject, setSubject] = useState(subjectId ?? subjects[0]?.id ?? "");
   const [title, setTitle] = useState(story?.title ?? "");
   const [source, setSource] = useState(story?.source ?? "");
-  const [saveState, setSaveState] = useState(story ? "Saved on this device" : "New draft");
+  const [saveState, setSaveState] = useState(story ? "Saved to your tree" : "New draft");
   const [preview, setPreview] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false); const [url, setUrl] = useState("");
   const [error, setError] = useState("");
@@ -48,7 +48,7 @@ function WritingDesk({ story, subjectId }: { story?: Story; subjectId?: string }
     if (!editor) return;
     const storyId = id || crypto.randomUUID();
     const next: Story = { id: storyId, subjectId: subject, authorId: state.viewerId, title: title.trim(), html: editor.getHTML(), source, status, updated: new Date().toISOString(), reviews: [] };
-    if (update(s => putStory(s, next))) { setId(storyId); setSaveState("Saved on this device"); if (status === "In review") router.push(`/stories/${storyId}`); }
+    if (update(s => putStory(s, next))) { setId(storyId); setSaveState("Saved to your tree"); if (status === "In review") router.push(`/stories/${storyId}`); }
   }
   const addLink = () => { setUrl(editor?.getAttributes("link").href ?? ""); setLinkOpen(!linkOpen); };
   return <div className="ft-writing">

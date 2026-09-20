@@ -6,12 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@neon/config": "^1.7.2",
     "@neon/env": "^1.4.3",
     "@neondatabase/auth": "^0.5.0-beta",
+    "@neondatabase/serverless": "^1.1.0",
     "@tiptap/extension-link": "^3.31.3",
     "@tiptap/extension-placeholder": "^3.31.3",
     "@tiptap/extension-underline": "^3.31.3",
@@ -20,6 +23,7 @@
     "@xyflow/react": "^12.11.6",
     "clsx": "latest",
     "dagre": "^0.8.5",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
@@ -31,6 +35,8 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "dotenv": "^18.0.1",
+    "drizzle-kit": "^0.31.10",
     "typescript": "latest"
   }
 }
