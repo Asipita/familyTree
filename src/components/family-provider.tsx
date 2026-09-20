@@ -2,13 +2,13 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { authClient } from "@/lib/auth/client";
-import { seedFamily, type FamilyState } from "@/lib/family";
+import { emptyFamily, type FamilyState } from "@/lib/family";
 
 const Context = createContext<{ state: FamilyState; ready: boolean; error: string; update: (change: (state: FamilyState) => FamilyState) => boolean } | null>(null);
 
 export function FamilyProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending: sessionPending } = authClient.useSession();
-  const [state, setState] = useState(seedFamily);
+  const [state, setState] = useState(emptyFamily);
   const current = useRef(state);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");

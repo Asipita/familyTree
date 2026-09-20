@@ -162,9 +162,9 @@ export function AuthShell({ mode }: AuthShellProps) {
             <div className="auth-success-state" role="status">
               <span className="auth-success-icon"><Check size={19} /></span>
               <span className="auth-form-eyebrow"><span /> Next step</span>
-              <h2>{isForgot ? "Recovery preview" : isCreate ? "Start with your place in the family." : "That’s the right door."}</h2>
-              <p>{isForgot ? "If an account exists for that address, a recovery link is on its way." : "Continue to explore FamilyTree."}</p>
-              <Link className="button button-secondary button-md" href={authRoute(isForgot ? "/auth/sign-in" : isCreate ? "/setup" : "/tree")}>{isForgot ? "Return to sign in" : "Continue"}<ArrowUpRight size={15} /></Link>
+              <h2>{isForgot ? "Recovery preview" : isCreate ? "Your place is ready." : "That’s the right door."}</h2>
+              <p>{isForgot ? "If an account exists for that address, a recovery link is on its way." : isCreate ? "You are the first member of your personal tree. Add the people you remember next." : "Continue to explore FamilyTree."}</p>
+              <Link className="button button-secondary button-md" href={authRoute(isForgot ? "/auth/sign-in" : "/tree")}>{isForgot ? "Return to sign in" : isCreate ? "Open my tree" : "Continue"}<ArrowUpRight size={15} /></Link>
             </div>
           ) : (
             <form className="auth-form" onSubmit={handleSubmit}>

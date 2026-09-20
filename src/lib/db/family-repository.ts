@@ -1,9 +1,9 @@
 import { and, asc, desc, eq } from "drizzle-orm";
-import { seedFamily, type FamilyState, type Person, type Story } from "@/lib/family";
+import { emptyFamily, type FamilyState, type Person, type Story } from "@/lib/family";
 import { getDb } from "@/lib/db/client";
 import { familyLinks, familySettings, familyViews, people, requests, stories, storyReviews } from "@/lib/db/schema";
 
-type AuthUser = { id: string; email?: string | null };
+type AuthUser = { id: string; email?: string | null; name?: string | null };
 
 function asFamilyState(rows: {
   view: typeof familyViews.$inferSelect;
@@ -70,11 +70,12 @@ async function readView(viewId: string) {
   return asFamilyState({ view, people: viewPeople, links, stories: viewStories, reviews, requests: viewRequests, settings: settings[0] });
 }
 
-function seedForUser(user: AuthUser): FamilyState {
+function initialFamilyForUser(user: AuthUser): FamilyState {
+  const name = user.name?.trim() || user.email?.split("@")[0] || "You";
   return {
-    ...seedFamily,
-    people: seedFamily.people.map((person) => person.id === seedFamily.viewerId ? { ...person, accountId: user.id } : { ...person, accountId: undefined }),
-    settings: { ...seedFamily.settings, email: user.email ?? seedFamily.settings.email },
+    ...emptyFamily,
+    people: [{ id: emptyFamily.viewerId, name, born: "", living: true, biography: "", accountId: user.id }],
+    settings: { ...emptyFamily.settings, email: user.email ?? "" },
   };
 }
 
@@ -82,7 +83,7 @@ export async function getOrCreateFamily(user: AuthUser) {
   const db = getDb();
   const [existing] = await db.select().from(familyViews).where(eq(familyViews.ownerUserId, user.id)).limit(1);
   if (existing) return readView(existing.id);
-  const view = await createView(user, seedForUser(user));
+  const view = await createView(user, initialFamilyForUser(user));
   return readView(view.id);
 }
 
@@ -104,7 +105,7 @@ export async function saveFamily(user: AuthUser, input: FamilyState) {
   const db = getDb();
   const [view] = await db.select().from(familyViews).where(eq(familyViews.ownerUserId, user.id)).limit(1);
   if (!view) {
-    await createView(user, seedForUser(user));
+    await createView(user, initialFamilyForUser(user));
     return saveFamily(user, input);
   }
   if (input.version !== 1 || !input.people.some((person) => person.id === view.viewerPersonId)) throw new Error("Invalid family data.");
