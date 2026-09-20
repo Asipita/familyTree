@@ -8,6 +8,13 @@
       "when": 1789903281351,
       "tag": "0000_numerous_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789917788041,
+      "tag": "0001_quick_ted_forrester",
+      "breakpoints": true
     }
   ]
 }

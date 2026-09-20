@@ -9,6 +9,7 @@ export const familyViews = pgTable("family_views", {
   id: uuid("id").defaultRandom().primaryKey(),
   ownerUserId: text("owner_user_id").notNull().unique(),
   viewerPersonId: text("viewer_person_id").notNull(),
+  onboardingComplete: boolean("onboarding_complete").notNull().default(false),
   ...timestamps,
 });
 
@@ -22,6 +23,7 @@ export const people = pgTable("people", {
   biography: text("biography").notNull().default(""),
   biographyBy: text("biography_by"),
   accountUserId: text("account_user_id"),
+  gender: text("gender"),
   ...timestamps,
 }, (table) => [
   primaryKey({ columns: [table.viewId, table.id] }),
@@ -32,6 +34,8 @@ export const familyLinks = pgTable("family_links", {
   viewId: uuid("view_id").notNull().references(() => familyViews.id, { onDelete: "cascade" }),
   id: text("id").notNull(),
   kind: text("kind").notNull(),
+  relation: text("relation"),
+  complete: boolean("complete").notNull().default(true),
   fromPersonId: text("from_person_id").notNull(),
   toPersonId: text("to_person_id").notNull(),
   ...timestamps,

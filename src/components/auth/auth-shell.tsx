@@ -164,7 +164,7 @@ export function AuthShell({ mode }: AuthShellProps) {
               <span className="auth-form-eyebrow"><span /> Next step</span>
               <h2>{isForgot ? "Recovery preview" : isCreate ? "Your place is ready." : "That’s the right door."}</h2>
               <p>{isForgot ? "If an account exists for that address, a recovery link is on its way." : isCreate ? "You are the first member of your personal tree. Add the people you remember next." : "Continue to explore FamilyTree."}</p>
-              <Link className="button button-secondary button-md" href={authRoute(isForgot ? "/auth/sign-in" : "/tree")}>{isForgot ? "Return to sign in" : isCreate ? "Open my tree" : "Continue"}<ArrowUpRight size={15} /></Link>
+              <Link className="button button-secondary button-md" href={authRoute(isForgot ? "/auth/sign-in" : isCreate ? "/onboarding" : "/tree")}>{isForgot ? "Return to sign in" : isCreate ? "Continue setup" : "Continue"}<ArrowUpRight size={15} /></Link>
             </div>
           ) : (
             <form className="auth-form" onSubmit={handleSubmit}>

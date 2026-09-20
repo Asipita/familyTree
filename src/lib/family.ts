@@ -1,16 +1,18 @@
 export type Person = {
   id: string; name: string; born: string; died?: string; living: boolean;
-  biography: string; biographyBy?: string; accountId?: string;
+  biography: string; biographyBy?: string; accountId?: string; gender?: "male" | "female";
 };
-export type FamilyLink = { id: string; kind: "parent" | "partner"; from: string; to: string };
+export type RelativeKind = "sibling" | "grandparent" | "uncle" | "aunt" | "cousin" | "other";
+export type FamilyLink = { id: string; kind: "parent" | "partner" | "relative"; from: string; to: string; relation?: RelativeKind; complete?: boolean };
 export type StoryStatus = "Draft" | "In review" | "Published";
 export type Story = { id: string; subjectId: string; authorId: string; title: string; html: string; source: string; status: StoryStatus; updated: string; reviews: { personId: string; note: string; decision: "Approved" | "Changes requested" }[] };
 export type Request = { id: string; kind: "Invitation" | "Claim" | "Connection"; personId: string; detail: string; status: "Prepared" | "Pending review"; created: string };
-export type FamilyState = { version: 1; viewerId: string; people: Person[]; links: FamilyLink[]; stories: Story[]; requests: Request[]; settings: { email: string; reviewNotifications: boolean; discoverable: boolean } };
+export type FamilyState = { version: 1; viewerId: string; onboardingComplete: boolean; people: Person[]; links: FamilyLink[]; stories: Story[]; requests: Request[]; settings: { email: string; reviewNotifications: boolean; discoverable: boolean } };
 
 export const emptyFamily: FamilyState = {
   version: 1,
   viewerId: "self",
+  onboardingComplete: false,
   people: [{ id: "self", name: "You", born: "", living: true, biography: "" }],
   links: [],
   stories: [],
@@ -39,7 +41,13 @@ export function relationTo(state: FamilyState, target: string) {
   if (parents(viewer).some(p => parents(p).includes(target))) return "Grandparent";
   if (parents(viewer).some(p => parents(p).some(g => parents(target).includes(g)))) return "Parent’s sibling";
   if (parents(target).some(p => parents(p).some(g => parents(viewer).some(v => parents(v).includes(g))))) return "Cousin";
+  const provisional = state.links.find(link => link.kind === "relative" && link.relation && ((link.from === viewer && link.to === target) || (link.to === viewer && link.from === target)));
+  if (provisional?.relation) return provisional.relation[0].toUpperCase() + provisional.relation.slice(1);
   return "Family connection";
+}
+
+export function relativeLink(kind: RelativeKind, from: string, to: string, complete = false): FamilyLink {
+  return { id: crypto.randomUUID(), kind: "relative", relation: kind, from, to, complete };
 }
 
 // Central checks are also used by the editor: hiding a button is not the rule.

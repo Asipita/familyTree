@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import type { Route } from "next";
+import { useEffect, useState } from "react";
 import { BookOpen, GitBranch, UsersRound, MessageSquare, UserPlus, Network, Settings, LogOut } from "lucide-react";
 import { FamilyTreeLogo } from "@/components/brand/family-tree-logo";
 import { useFamily } from "@/components/family-provider";
@@ -25,6 +26,9 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   const { data: session } = authClient.useSession();
   const viewer = state.people.find(p => p.id === state.viewerId)!;
   const accountName = session?.user?.name?.trim() || viewer.name;
+  useEffect(() => {
+    if (ready && !state.onboardingComplete) router.replace("/onboarding" as Route);
+  }, [ready, router, state.onboardingComplete]);
   async function logOut() {
     setLoggingOut(true);
     const result = await authClient.signOut();

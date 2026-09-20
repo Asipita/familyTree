@@ -12,5 +12,6 @@ export const config = {
     "/invitations/:path*",
     "/settings/:path*",
     "/setup/:path*",
+    "/onboarding/:path*",
   ],
 };

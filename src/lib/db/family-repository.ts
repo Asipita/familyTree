@@ -24,6 +24,7 @@ function asFamilyState(rows: {
   return {
     version: 1,
     viewerId: rows.view.viewerPersonId,
+    onboardingComplete: rows.view.onboardingComplete,
     people: rows.people.map((person): Person => ({
       id: person.id,
       name: person.name,
@@ -33,8 +34,9 @@ function asFamilyState(rows: {
       biography: person.biography,
       ...(person.biographyBy ? { biographyBy: person.biographyBy } : {}),
       ...(person.accountUserId ? { accountId: person.accountUserId } : {}),
+      ...(person.gender === "male" || person.gender === "female" ? { gender: person.gender } : {}),
     })),
-    links: rows.links.map((link) => ({ id: link.id, kind: link.kind as "parent" | "partner", from: link.fromPersonId, to: link.toPersonId })),
+    links: rows.links.map((link) => ({ id: link.id, kind: link.kind as "parent" | "partner" | "relative", from: link.fromPersonId, to: link.toPersonId, ...(link.relation ? { relation: link.relation as "sibling" | "grandparent" | "uncle" | "aunt" | "cousin" | "other" } : {}), complete: link.complete })),
     stories: rows.stories.map((story) => ({
       id: story.id,
       subjectId: story.subjectId,
@@ -89,10 +91,10 @@ export async function getOrCreateFamily(user: AuthUser) {
 
 async function createView(user: AuthUser, state: FamilyState) {
   const db = getDb();
-  const [view] = await db.insert(familyViews).values({ ownerUserId: user.id, viewerPersonId: state.viewerId }).returning();
+  const [view] = await db.insert(familyViews).values({ ownerUserId: user.id, viewerPersonId: state.viewerId, onboardingComplete: state.onboardingComplete }).returning();
   if (!view) throw new Error("Could not create the family view.");
-  await db.insert(people).values(state.people.map((person) => ({ viewId: view.id, id: person.id, name: person.name, born: person.born, died: person.died ?? null, living: person.living, biography: person.biography, biographyBy: person.biographyBy ?? null, accountUserId: person.id === state.viewerId ? user.id : null })));
-  if (state.links.length) await db.insert(familyLinks).values(state.links.map((link) => ({ viewId: view.id, id: link.id, kind: link.kind, fromPersonId: link.from, toPersonId: link.to })));
+  await db.insert(people).values(state.people.map((person) => ({ viewId: view.id, id: person.id, name: person.name, born: person.born, died: person.died ?? null, living: person.living, biography: person.biography, biographyBy: person.biographyBy ?? null, accountUserId: person.id === state.viewerId ? user.id : null, gender: person.gender ?? null })));
+  if (state.links.length) await db.insert(familyLinks).values(state.links.map((link) => ({ viewId: view.id, id: link.id, kind: link.kind, relation: link.relation ?? null, complete: link.complete ?? true, fromPersonId: link.from, toPersonId: link.to })));
   if (state.stories.length) await db.insert(stories).values(state.stories.map((story) => ({ viewId: view.id, id: story.id, subjectId: story.subjectId, authorId: story.authorId, title: story.title, html: story.html, source: story.source, status: story.status, updated: story.updated })));
   const reviews = state.stories.flatMap((story) => story.reviews.map((review) => ({ viewId: view.id, storyId: story.id, personId: review.personId, note: review.note, decision: review.decision })));
   if (reviews.length) await db.insert(storyReviews).values(reviews);
@@ -116,10 +118,10 @@ export async function saveFamily(user: AuthUser, input: FamilyState) {
     db.delete(familyLinks).where(eq(familyLinks.viewId, view.id)),
     db.delete(requests).where(eq(requests.viewId, view.id)),
     db.delete(people).where(eq(people.viewId, view.id)),
-    db.insert(people).values(safeState.people.map((person) => ({ viewId: view.id, id: person.id, name: person.name, born: person.born, died: person.died ?? null, living: person.living, biography: person.biography, biographyBy: person.biographyBy ?? null, accountUserId: person.id === view.viewerPersonId ? user.id : null }))),
-    ...(safeState.links.length ? [db.insert(familyLinks).values(safeState.links.map((link) => ({ viewId: view.id, id: link.id, kind: link.kind, fromPersonId: link.from, toPersonId: link.to })))] : []),
+    db.insert(people).values(safeState.people.map((person) => ({ viewId: view.id, id: person.id, name: person.name, born: person.born, died: person.died ?? null, living: person.living, biography: person.biography, biographyBy: person.biographyBy ?? null, accountUserId: person.id === view.viewerPersonId ? user.id : null, gender: person.gender ?? null }))),
+    ...(safeState.links.length ? [db.insert(familyLinks).values(safeState.links.map((link) => ({ viewId: view.id, id: link.id, kind: link.kind, relation: link.relation ?? null, complete: link.complete ?? true, fromPersonId: link.from, toPersonId: link.to })))] : []),
     ...(safeState.stories.length ? [db.insert(stories).values(safeState.stories.map((story) => ({ viewId: view.id, id: story.id, subjectId: story.subjectId, authorId: story.authorId, title: story.title, html: story.html, source: story.source, status: story.status, updated: story.updated })))] : []),
-    db.update(familyViews).set({ viewerPersonId: safeState.viewerId, updatedAt: new Date() }).where(eq(familyViews.id, view.id)),
+    db.update(familyViews).set({ viewerPersonId: safeState.viewerId, onboardingComplete: safeState.onboardingComplete, updatedAt: new Date() }).where(eq(familyViews.id, view.id)),
     db.update(familySettings).set({ ...safeState.settings, updatedAt: new Date() }).where(eq(familySettings.viewId, view.id)),
   ];
   const reviews = safeState.stories.flatMap((story) => story.reviews.map((review) => ({ viewId: view.id, storyId: story.id, personId: review.personId, note: review.note, decision: review.decision })));
