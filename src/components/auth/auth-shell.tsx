@@ -110,8 +110,8 @@ export function AuthShell({ mode }: AuthShellProps) {
   const { data: session, isPending: sessionPending } = authClient.useSession();
 
   useEffect(() => {
-    if (!sessionPending && session?.user) router.replace(isCreate ? "/onboarding" : "/tree");
-  }, [isCreate, router, session?.user, sessionPending]);
+    if (!sessionPending && session?.user) router.replace("/tree");
+  }, [router, session?.user, sessionPending]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -137,8 +137,7 @@ export function AuthShell({ mode }: AuthShellProps) {
         ? await authClient.signUp.email({ email, password, name })
         : await authClient.signIn.email({ email, password });
       if (result.error) throw result.error;
-      if (isCreate) router.replace("/onboarding");
-      else router.replace("/tree");
+      router.replace("/tree");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "We could not complete that request. Please try again.");
     } finally {

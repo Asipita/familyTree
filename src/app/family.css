@@ -1,4 +1,39 @@
 /* Personal family workspace: shared people, individual viewpoints. */
+.onboarding-modal {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid #dce0d6;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 24px 80px #263b3538;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.onboarding-modal::backdrop { background: #27382f66; backdrop-filter: blur(3px); }
+.onboarding-modal-header { margin-bottom: 26px; }
+.onboarding-modal-header h1 { margin: 20px 0 0; font: 400 34px/1.12 var(--serif); letter-spacing: -.035em; }
+.onboarding-modal-header h1:focus { outline: none; }
+.onboarding-modal .onboarding-stepper { margin-bottom: 24px; }
+.onboarding-modal .onboarding-modal-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.onboarding-modal .onboarding-card { min-width: 0; padding: 0; background: #fff; border: 0; box-shadow: none; }
+.onboarding-modal .onboarding-card-heading { margin-bottom: 22px; }
+.onboarding-modal .onboarding-card-heading p { display: none; }
+.onboarding-modal .onboarding-grid { grid-template-columns: 1fr 1fr; align-items: end; }
+.onboarding-modal .onboarding-grid label:last-child { grid-column: auto; }
+.onboarding-modal .onboarding-actions { padding-top: 24px; margin-top: 24px; border-top: 1px solid #e7eae3; }
+.onboarding-modal .onboarding-card input, .onboarding-modal .onboarding-card select { font-size: 16px; min-width: 0; }
+.onboarding-modal .onboarding-connection { background: #fff; }
+.onboarding-modal .onboarding-error { margin-top: 18px; }
+.onboarding-modal button:disabled { opacity: .6; cursor: wait; }
+.onboarding-modal :focus-visible { outline: 2px solid #9a644a; outline-offset: 3px; }
+@media (max-width: 560px) {
+  .onboarding-modal { max-height: calc(100dvh - 24px); width: calc(100vw - 24px); padding: 22px; }
+  .onboarding-modal-header h1 { font-size: 30px; }
+  .onboarding-modal .onboarding-grid { grid-template-columns: 1fr; }
+}
 .ft-workspace { display: flex; min-height: 100dvh; background: #f7f6f1; }
 .ft-sidebar { width: 220px; flex: 0 0 220px; height: 100dvh; position: sticky; top: 0; padding: 25px 17px; display: flex; flex-direction: column; border-right: 1px solid #dce0d6; background: #efeee7; }
 .ft-sidebar > .wordmark { padding: 0 8px 34px; }
