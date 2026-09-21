@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Check, ChevronDown, Plus, Trash2 } from "lucide-
 import { FamilyTreeLogo } from "@/components/brand/family-tree-logo";
 import { useFamily } from "@/components/family-provider";
 import { relativeLink, type Person, type RelativeKind } from "@/lib/family";
+import { resolveSiblingConnections } from "@/lib/family-relationships";
 
 type ConnectionChoice = "parent" | "child" | "partner" | RelativeKind;
 type ConnectionDraft = { id: string; name: string; born: string; gender: "" | "male" | "female"; relation: ConnectionChoice };
@@ -102,8 +103,7 @@ export function OnboardingModal() {
         else if (connection.relation === "partner") links.push({ id: crypto.randomUUID(), kind: "partner", from: current.viewerId, to: id });
         else links.push(relativeLink(connection.relation, id, current.viewerId));
       }
-      if (links.some((link) => link.kind === "parent" && link.to === current.viewerId)) links = links.map((link) => link.kind === "relative" && link.complete === false && (link.from === current.viewerId || link.to === current.viewerId) ? { ...link, complete: true } : link);
-      return { ...current, onboardingComplete: true, people, links };
+      return resolveSiblingConnections({ ...current, onboardingComplete: true, people, links });
     });
     submitting.current = false;
     setSaving(false);

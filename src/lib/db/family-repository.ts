@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db/client";
 import { familyLinks, familySettings, familyViews, people, requests, stories, storyReviews } from "@/lib/db/schema";
 import { retryDatabaseRead } from "@/lib/db/read-retry";
 import { InvalidFamilyDataError } from "@/lib/family-errors";
+import { resolveSiblingConnections } from "@/lib/family-relationships";
 
 type AuthUser = { id: string; email?: string | null; name?: string | null };
 
@@ -27,7 +28,7 @@ function asFamilyState(rows: FamilyRows): FamilyState {
     reviewsByStory.set(review.storyId, current);
   }
 
-  return {
+  return resolveSiblingConnections({
     version: 1,
     viewerId: rows.view.viewerPersonId,
     onboardingComplete: rows.view.onboardingComplete,
@@ -60,7 +61,7 @@ function asFamilyState(rows: FamilyRows): FamilyState {
       reviewNotifications: rows.settings?.reviewNotifications ?? true,
       discoverable: rows.settings?.discoverable ?? false,
     },
-  };
+  });
 }
 
 function viewQueries(db: ReturnType<typeof getDb>, viewId: string) {
@@ -129,7 +130,7 @@ export async function saveFamily(user: AuthUser, input: FamilyState) {
     return saveFamily(user, input);
   }
   if (!input.people.some((person) => person?.id === view.viewerPersonId)) throw new InvalidFamilyDataError();
-  const safeState = { ...input, viewerId: view.viewerPersonId };
+  const safeState = resolveSiblingConnections({ ...input, viewerId: view.viewerPersonId });
   const operations: [BatchItem<"pg">, ...BatchItem<"pg">[]] = [
     db.delete(storyReviews).where(eq(storyReviews.viewId, view.id)),
     db.delete(stories).where(eq(stories.viewId, view.id)),
