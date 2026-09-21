@@ -21,7 +21,7 @@ module.exports = function createLoader(mocks = {}) {
     };
     cache.set(filename, loaded);
     loaded._compile(ts.transpileModule(readFileSync(filename, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
     }).outputText, filename);
     return loaded.exports;
   }
