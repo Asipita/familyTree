@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { authClient } from "@/lib/auth/client";
 import { emptyFamily, type FamilyState } from "@/lib/family";
+import { familyErrorMessage, familyErrorMessages } from "@/lib/family-errors";
 
 const Context = createContext<{ state: FamilyState; ready: boolean; error: string; update: (change: (state: FamilyState) => FamilyState) => boolean; save: (change: (state: FamilyState) => FamilyState) => Promise<boolean> } | null>(null);
 
@@ -23,10 +24,13 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     fetch("/api/family")
       .then(async (response) => {
         const payload = await response.json() as FamilyState | { error?: string };
-        if (!response.ok || !("version" in payload)) throw new Error("error" in payload ? payload.error : "Your family view could not be loaded.");
+        if (!response.ok || !payload || !("version" in payload)) {
+          if (!cancelled) setError(familyErrorMessage(payload, "FAMILY_LOAD_FAILED"));
+          return;
+        }
         if (!cancelled) { loadedFor.current = session.user.id; current.current = payload; setState(payload); setError(""); }
       })
-      .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Your family view could not be loaded."); })
+      .catch(() => { if (!cancelled) setError(familyErrorMessages.FAMILY_LOAD_FAILED); })
       .finally(() => { if (!cancelled) setReady(true); });
     return () => { cancelled = true; };
   }, [session?.user?.id, sessionPending]);
@@ -36,20 +40,20 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     saving.current = true;
     const userId = session?.user?.id;
     try {
-      if (!userId || loadedFor.current !== userId) throw new Error("Your profile has not loaded. Refresh and try again.");
+      if (!userId || loadedFor.current !== userId) { setError("Your profile has not loaded. Refresh and try again."); return false; }
       const next = change(current.current);
       setError("");
       const response = await fetch("/api/family", {
         method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(next),
       });
       const payload = await response.json() as FamilyState | { error?: string };
-      if (!response.ok || !("version" in payload)) throw new Error("error" in payload ? payload.error : "Your changes could not be saved.");
+      if (!response.ok || !payload || !("version" in payload)) { setError(familyErrorMessage(payload, "FAMILY_SAVE_FAILED")); return false; }
       if (loadedFor.current !== userId) return false;
       current.current = payload;
       setState(payload);
       return true;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not save. Please try again.");
+    } catch {
+      setError(familyErrorMessages.FAMILY_SAVE_FAILED);
       return false;
     } finally { saving.current = false; }
   }
@@ -62,10 +66,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
           .then(async (response) => {
             if (!response.ok) {
               const payload = await response.json().catch(() => ({})) as { error?: string };
-              throw new Error(payload.error ?? "Your changes could not be saved.");
+              setError(familyErrorMessage(payload, "FAMILY_SAVE_FAILED"));
             }
           })
-          .catch((cause) => setError(cause instanceof Error ? cause.message : "Your changes could not be saved."));
+          .catch(() => setError(familyErrorMessages.FAMILY_SAVE_FAILED));
       }
       return true;
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save. Please try again."); return false; }

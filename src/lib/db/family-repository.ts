@@ -1,11 +1,14 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { emptyFamily, type FamilyState, type Person, type Story } from "@/lib/family";
 import { getDb } from "@/lib/db/client";
 import { familyLinks, familySettings, familyViews, people, requests, stories, storyReviews } from "@/lib/db/schema";
+import { retryDatabaseRead } from "@/lib/db/read-retry";
+import { InvalidFamilyDataError } from "@/lib/family-errors";
 
 type AuthUser = { id: string; email?: string | null; name?: string | null };
 
-function asFamilyState(rows: {
+type FamilyRows = {
   view: typeof familyViews.$inferSelect;
   people: (typeof people.$inferSelect)[];
   links: (typeof familyLinks.$inferSelect)[];
@@ -13,7 +16,10 @@ function asFamilyState(rows: {
   reviews: (typeof storyReviews.$inferSelect)[];
   requests: (typeof requests.$inferSelect)[];
   settings: typeof familySettings.$inferSelect | undefined;
-}): FamilyState {
+};
+type ViewSnapshot = readonly [FamilyRows["view"][], FamilyRows["people"], FamilyRows["links"], FamilyRows["stories"], FamilyRows["reviews"], FamilyRows["requests"], NonNullable<FamilyRows["settings"]>[]];
+
+function asFamilyState(rows: FamilyRows): FamilyState {
   const reviewsByStory = new Map<string, Story["reviews"]>();
   for (const review of rows.reviews) {
     const current = reviewsByStory.get(review.storyId) ?? [];
@@ -57,19 +63,28 @@ function asFamilyState(rows: {
   };
 }
 
-async function readView(viewId: string) {
-  const db = getDb();
-  const [view] = await db.select().from(familyViews).where(eq(familyViews.id, viewId)).limit(1);
-  if (!view) throw new Error("Family view not found.");
-  const [viewPeople, links, viewStories, reviews, viewRequests, settings] = await Promise.all([
+function viewQueries(db: ReturnType<typeof getDb>, viewId: string) {
+  return [
+    db.select().from(familyViews).where(eq(familyViews.id, viewId)).limit(1),
     db.select().from(people).where(eq(people.viewId, viewId)).orderBy(asc(people.name)),
     db.select().from(familyLinks).where(eq(familyLinks.viewId, viewId)).orderBy(asc(familyLinks.id)),
     db.select().from(stories).where(eq(stories.viewId, viewId)).orderBy(desc(stories.updated)),
     db.select().from(storyReviews).where(eq(storyReviews.viewId, viewId)).orderBy(asc(storyReviews.createdAt)),
     db.select().from(requests).where(eq(requests.viewId, viewId)).orderBy(desc(requests.created)),
     db.select().from(familySettings).where(eq(familySettings.viewId, viewId)).limit(1),
-  ]);
+  ] as const;
+}
+
+function fromSnapshot([[view], viewPeople, links, viewStories, reviews, viewRequests, settings]: ViewSnapshot) {
+  if (!view) throw new Error("Family view not found.");
   return asFamilyState({ view, people: viewPeople, links, stories: viewStories, reviews, requests: viewRequests, settings: settings[0] });
+}
+
+async function readView(viewId: string) {
+  return retryDatabaseRead(async () => {
+    const db = getDb();
+    return fromSnapshot(await db.batch(viewQueries(db, viewId)));
+  });
 }
 
 function initialFamilyForUser(user: AuthUser): FamilyState {
@@ -83,7 +98,7 @@ function initialFamilyForUser(user: AuthUser): FamilyState {
 
 export async function getOrCreateFamily(user: AuthUser) {
   const db = getDb();
-  const [existing] = await db.select().from(familyViews).where(eq(familyViews.ownerUserId, user.id)).limit(1);
+  const [existing] = await retryDatabaseRead(() => db.select().from(familyViews).where(eq(familyViews.ownerUserId, user.id)).limit(1).execute());
   if (existing) return readView(existing.id);
   const view = await createView(user, initialFamilyForUser(user));
   return readView(view.id);
@@ -104,15 +119,18 @@ async function createView(user: AuthUser, state: FamilyState) {
 }
 
 export async function saveFamily(user: AuthUser, input: FamilyState) {
+  if (!input || input.version !== 1 || !Array.isArray(input.people) || !Array.isArray(input.links)
+    || !Array.isArray(input.stories) || !Array.isArray(input.requests) || !input.settings
+    || typeof input.onboardingComplete !== "boolean") throw new InvalidFamilyDataError();
   const db = getDb();
-  const [view] = await db.select().from(familyViews).where(eq(familyViews.ownerUserId, user.id)).limit(1);
+  const [view] = await retryDatabaseRead(() => db.select().from(familyViews).where(eq(familyViews.ownerUserId, user.id)).limit(1).execute());
   if (!view) {
     await createView(user, initialFamilyForUser(user));
     return saveFamily(user, input);
   }
-  if (input.version !== 1 || !input.people.some((person) => person.id === view.viewerPersonId)) throw new Error("Invalid family data.");
+  if (!input.people.some((person) => person?.id === view.viewerPersonId)) throw new InvalidFamilyDataError();
   const safeState = { ...input, viewerId: view.viewerPersonId };
-  const operations: any[] = [
+  const operations: [BatchItem<"pg">, ...BatchItem<"pg">[]] = [
     db.delete(storyReviews).where(eq(storyReviews.viewId, view.id)),
     db.delete(stories).where(eq(stories.viewId, view.id)),
     db.delete(familyLinks).where(eq(familyLinks.viewId, view.id)),
@@ -127,6 +145,9 @@ export async function saveFamily(user: AuthUser, input: FamilyState) {
   const reviews = safeState.stories.flatMap((story) => story.reviews.map((review) => ({ viewId: view.id, storyId: story.id, personId: review.personId, note: review.note, decision: review.decision })));
   if (reviews.length) operations.push(db.insert(storyReviews).values(reviews));
   if (safeState.requests.length) operations.push(db.insert(requests).values(safeState.requests.map((request) => ({ viewId: view.id, id: request.id, kind: request.kind, personId: request.personId, detail: request.detail, status: request.status, created: request.created }))));
-  await db.batch(operations as never);
-  return readView(view.id);
+  // Return the persisted snapshot in the same transaction: no fallible read after commit.
+  // Do not retry this batch automatically; a lost response can hide a committed write.
+  const snapshotQueries = viewQueries(db, view.id);
+  const results = await db.batch([...operations, ...snapshotQueries]);
+  return fromSnapshot(results.slice(-snapshotQueries.length) as unknown as ViewSnapshot);
 }

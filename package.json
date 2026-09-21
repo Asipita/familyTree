@@ -9,7 +9,8 @@
     "lint": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "test:db-config": "node --test tests/drizzle-config.test.cjs"
+    "test:db-config": "node --test tests/drizzle-config.test.cjs",
+    "test:api": "node --test tests/family-api.test.cjs tests/database-read-retry.test.cjs tests/family-repository.test.cjs"
   },
   "dependencies": {
     "@neon/config": "^1.7.2",
