@@ -55,6 +55,18 @@ test("a direct parent stays one generation above a family connection", () => {
   assert.equal(position(graph, "father").y, position(graph, "aisha").y - 190);
 });
 
+test("a single parent aligns with their only child instead of the row centre", () => {
+  const graph = graphFor(family(["self", "aisha", "father", "parent", "uncle", "grandparent"], [
+    parent("father", "aisha"),
+    { id: "family-connection", kind: "relative", relation: "other", from: "aisha", to: "self" },
+    parent("parent", "self"), parent("uncle", "self"),
+    parent("grandparent", "parent"), parent("grandparent", "uncle"),
+  ]));
+  assert.equal(position(graph, "father").x, position(graph, "aisha").x);
+  const union = sharedUnion(graph, "aisha");
+  assert.equal(union.position.x + 6, position(graph, "aisha").x + 101);
+});
+
 test("adding a second parent connects every declared sibling without duplicates", () => {
   const input = family(["self", "sister", "brother", "mother", "father"], [sibling("sister", "self"), sibling("brother", "sister"), parent("mother", "self"), parent("father", "self")]);
   const resolved = resolveSiblingConnections(input);

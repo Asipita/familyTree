@@ -84,6 +84,23 @@ function arrangeRow(row: Node[], groups: FamilyGroup[], state: FamilyState) {
   packed.forEach((node, index) => { node.position.x = left + index * (PERSON_WIDTH + PERSON_GAP); });
 }
 
+// A single parent with a single child is a direct column, not a family rail.
+// Aligning the upper card to the child keeps a branch such as Fagbola → Aisha
+// visually independent when another ancestor occupies the same generation.
+function alignSingleChildColumns(rows: Map<number, Node[]>, groups: FamilyGroup[]) {
+  const byId = new Map([...rows.values()].flat().map(node => [node.id, node]));
+  for (const group of groups) {
+    if (group.parents.length !== 1 || group.children.length !== 1) continue;
+    const parent = byId.get(group.parents[0]);
+    const child = byId.get(group.children[0]);
+    if (!parent || !child || parent.position.y >= child.position.y) continue;
+    const row = rows.get(parent.position.y / GENERATION_GAP) ?? [];
+    const proposedX = child.position.x;
+    const blocked = row.some(node => node.id !== parent.id && Math.abs(node.position.x - proposedX) < PERSON_WIDTH + PERSON_GAP);
+    if (!blocked) parent.position.x = proposedX;
+  }
+}
+
 // Rank people, not relationship edges: siblings and partners share a generation.
 // Direct `parent` links define structural distance. Provisional relationship
 // labels add the missing generation hint when a connector has not been filled
@@ -198,6 +215,7 @@ export function graphFor(input: FamilyState): { nodes: Node[]; edges: Edge[] } {
     const row = rows.get(level) ?? []; row.push(node); rows.set(level, row);
   }
   for (const row of rows.values()) arrangeRow(row, [...groups.values()], state);
+  alignSingleChildColumns(rows, [...groups.values()]);
   const byId = new Map(nodes.map(node => [node.id, node]));
   for (const [key, group] of groups) {
     const parents = group.parents.map(id => byId.get(id)!);
