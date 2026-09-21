@@ -138,6 +138,15 @@ test("single-parent and child connectors use routed union stems that avoid card 
   assert.equal(unionConnectorPath({ sourceX: 100, sourceY: 80, targetX: 100, targetY: 120 }), "M 100 80 V 120");
 });
 
+test("union connectors route around cards crossed by a vertical leg", () => {
+  const path = unionConnectorPath(
+    { sourceX: 100, sourceY: 80, targetX: 0, targetY: 260 },
+    [{ left: 50, right: 150, top: 120, bottom: 200 }],
+  );
+  assert.match(path, /M 100 80 V 104/);
+  assert.doesNotMatch(path, /V 166/);
+});
+
 test("a parent's sibling sits to the left of the adjacent parent pair", () => {
   const input = family(["self", "father", "uncle", "mother", "grandparent"], [
     parent("grandparent", "father"), parent("grandparent", "uncle"), parent("father", "self"), parent("mother", "self"),

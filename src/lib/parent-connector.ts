@@ -6,6 +6,11 @@ function overlapsHorizontalRail(railY: number, xStart: number, xEnd: number, box
   return box.top - padding < railY && railY < box.bottom + padding && xA < box.right && xB > box.left;
 }
 
+function overlapsVerticalLeg(x: number, yStart: number, yEnd: number, box: Bounds, padding = 8) {
+  const yA = Math.min(yStart, yEnd), yB = Math.max(yStart, yEnd);
+  return box.left - padding < x && x < box.right + padding && yA < box.bottom && yB > box.top;
+}
+
 function pickRailY(preferred: number, sourceY: number, targetY: number, sourceX: number, targetX: number, boxes: Bounds[], requested?: number) {
   const lo = Math.min(sourceY, targetY);
   const hi = Math.max(sourceY, targetY);
@@ -20,6 +25,10 @@ function pickRailY(preferred: number, sourceY: number, targetY: number, sourceX:
     const y = Math.max(lo + 4, Math.min(hi - 4, raw));
     let score = Math.abs(y - preferred);
     for (const box of boxes) if (overlapsHorizontalRail(y, sourceX, targetX, box)) score += 10000;
+    for (const box of boxes) {
+      if (overlapsVerticalLeg(sourceX, sourceY, y, box)) score += 10000;
+      if (overlapsVerticalLeg(targetX, y, targetY, box)) score += 10000;
+    }
     if (score < bestScore) { bestScore = score; best = y; }
   }
   return best;
