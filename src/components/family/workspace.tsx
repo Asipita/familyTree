@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { BookOpen, GitBranch, UsersRound, MessageSquare, UserPlus, Network, Settings, LogOut } from "lucide-react";
 import { FamilyTreeLogo } from "@/components/brand/family-tree-logo";
 import { useFamily } from "@/components/family-provider";
@@ -22,12 +21,17 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
-  const { state, ready, error } = useFamily();
+  const { state, ready, error, reload } = useFamily();
   const { data: session } = authClient.useSession();
   const viewer = state.people.find(p => p.id === state.viewerId)!;
-  const accountName = session?.user?.name?.trim() || viewer.name;
+  const accountName = viewer.accountId === session?.user?.id ? viewer.name : session?.user?.name?.trim() || viewer.name;
   const hasProfile = ready && Boolean(session?.user?.id) && viewer.accountId === session?.user?.id;
   const needsOnboarding = hasProfile && !state.onboardingComplete;
+
+  useEffect(() => {
+    if (ready && !hasProfile && !error) router.replace("/auth/sign-in");
+  }, [ready, hasProfile, error, router]);
+
   async function logOut() {
     setLoggingOut(true);
     const result = await authClient.signOut();
@@ -40,7 +44,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
       <nav aria-label="Family navigation">{nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} aria-current={path === href || path.startsWith(`${href}/`) ? "page" : undefined}><Icon size={18} />{label}{href === "/reviews" && state.stories.some(s => s.status === "In review") ? <i /> : null}</Link>)}</nav>
       <div className="ft-sidebar-bottom"><Link href={`/people/${viewer.id}`} className="ft-account"><span className="ft-avatar">{initials(accountName)}</span><span><strong>{accountName}</strong><small>Your view of the family</small></span></Link><button type="button" className="ft-logout" onClick={() => void logOut()} disabled={loggingOut}><LogOut size={16} /> {loggingOut ? "Logging out…" : "Log out"}</button></div>
     </aside>
-    <main className="ft-main" aria-busy={!ready}>{error && <p className="ft-alert" role="alert">{error}</p>}{hasProfile ? children : !ready ? <p className="ft-loading" role="status">Opening your family…</p> : error ? <button type="button" className="button button-secondary" onClick={() => window.location.reload()}>Reload family</button> : null}</main>
+    <main className="ft-main" aria-busy={!ready}>{error && <div className="ft-alert" role="alert"><p>{error}</p>{hasProfile && <button className="ft-text-button" onClick={() => void reload()}>Reload tree data</button>}</div>}{hasProfile ? children : !ready ? <p className="ft-loading" role="status">Opening your family…</p> : error ? <button type="button" className="button button-secondary" onClick={() => window.location.reload()}>Reload family</button> : null}</main>
   </div>{needsOnboarding && <OnboardingModal />}</>;
 }
 export function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) {

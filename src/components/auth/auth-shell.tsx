@@ -6,6 +6,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FamilyTreeLogo } from "@/components/brand/family-tree-logo";
+import { invitationDestination } from "@/lib/invitation-navigation";
 import { authClient } from "@/lib/auth/client";
 
 export type AuthMode = "sign-in" | "create" | "forgot-password";
@@ -14,6 +15,7 @@ const authRoute = (path: string) => path as Route;
 
 type AuthShellProps = {
   mode: AuthMode;
+  invite?: string;
 };
 
 const modeCopy: Record<AuthMode, { eyebrow: string; title: string; description: string }> = {
@@ -98,7 +100,9 @@ function FieldLabel({ children, optional = false }: { children: React.ReactNode;
   return <span className="auth-field-label">{children}{optional ? <small>optional</small> : null}</span>;
 }
 
-export function AuthShell({ mode }: AuthShellProps) {
+export function AuthShell({ mode, invite = "" }: AuthShellProps) {
+  const destination = invitationDestination(invite);
+  const authLink = (path: string) => authRoute(destination === "/tree" ? path : `${path}?invite=${invite}`);
   const copy = modeCopy[mode];
   const isCreate = mode === "create";
   const isForgot = mode === "forgot-password";
@@ -110,8 +114,8 @@ export function AuthShell({ mode }: AuthShellProps) {
   const { data: session, isPending: sessionPending } = authClient.useSession();
 
   useEffect(() => {
-    if (!sessionPending && session?.user) router.replace("/tree");
-  }, [router, session?.user, sessionPending]);
+    if (!sessionPending && session?.user) router.replace(authRoute(destination));
+  }, [router, session?.user, sessionPending, destination]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -134,10 +138,11 @@ export function AuthShell({ mode }: AuthShellProps) {
       if (isCreate && (!firstName || !surname)) throw new Error("Enter your first name and surname.");
       const name = [firstName, middleName, surname].filter(Boolean).join(" ");
       const result = isCreate
-        ? await authClient.signUp.email({ email, password, name })
+        ? await authClient.signUp.email({ email, password, name, callbackURL: `${window.location.origin}${destination}` })
         : await authClient.signIn.email({ email, password });
       if (result.error) throw result.error;
-      router.replace("/tree");
+      router.replace(authRoute(destination));
+      router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "We could not complete that request. Please try again.");
     } finally {
@@ -152,7 +157,7 @@ export function AuthShell({ mode }: AuthShellProps) {
         <div className="auth-form-topbar">
           <Link className="auth-mobile-brand" href={authRoute("/")} aria-label="Back to FamilyTree home"><FamilyTreeLogo size={34} /><span>FamilyTree</span></Link>
           <Link className="auth-home-link" href={authRoute("/")}><ArrowLeft size={14} /> Back to home</Link>
-          {!isForgot ? <span className="auth-top-prompt">{isCreate ? "Already have an account?" : "New to FamilyTree?"} <Link href={authRoute(isCreate ? "/auth/sign-in" : "/auth/create")}>{isCreate ? "Sign in" : "Begin one"}</Link></span> : null}
+          {!isForgot ? <span className="auth-top-prompt">{isCreate ? "Already have an account?" : "New to FamilyTree?"} <Link href={authLink(isCreate ? "/auth/sign-in" : "/auth/create")}>{isCreate ? "Sign in" : "Begin one"}</Link></span> : null}
         </div>
 
         <div className="auth-form-wrap">
@@ -187,11 +192,11 @@ export function AuthShell({ mode }: AuthShellProps) {
               {isCreate ? <div className="auth-trust-note"><ShieldCheck size={15} /><span>Your account is personal. Your biography is written by relatives.</span></div> : null}
               {error ? <p className="auth-error" role="alert">{error}</p> : null}
               <button className="button button-primary button-lg auth-submit" type="submit" disabled={busy || sessionPending}>{busy ? "Working…" : isForgot ? <><Send size={16} /> Send recovery note</> : isCreate ? <><Sparkles size={16} /> Create my account</> : <>Sign in <ArrowUpRight size={16} /></>}</button>
-              {isForgot ? <p className="auth-form-footnote">Remember your password? <Link href={authRoute("/auth/sign-in")}>Return to sign in</Link></p> : null}
+              {isForgot ? <p className="auth-form-footnote">Remember your password? <Link href={authLink("/auth/sign-in")}>Return to sign in</Link></p> : null}
             </form>
           )}
 
-          {!isCreate && !isForgot && !submitted ? <p className="auth-form-footnote">New here? <Link href={authRoute("/auth/create")}>Create an account</Link></p> : null}
+          {!isCreate && !isForgot && !submitted ? <p className="auth-form-footnote">New here? <Link href={authLink("/auth/create")}>Create an account</Link></p> : null}
           {isCreate && !submitted ? <p className="auth-form-footnote">Family stories deserve care and consent.</p> : null}
         </div>
       </section>

@@ -20,6 +20,8 @@ export function authorizeFamilySave(current: FamilyState, input: FamilyState, us
   for (const p of input.people) {
     if (!p || !text(p.id, 120, true) || !text(p.name, 300, true) || !text(p.born, 10)
       || (p.died !== undefined && !text(p.died, 10)) || typeof p.living !== "boolean" || !text(p.biography, 4000)
+      || (p.accountId !== undefined && !text(p.accountId, 200, true)) || (p.createdBy !== undefined && !text(p.createdBy, 200, true))
+      || (p.biographyBy !== undefined && !text(p.biographyBy, 120, true))
       || (p.gender !== undefined && !["male", "female"].includes(p.gender))) invalid();
   }
   if (!uniqueIds(input.people)) invalid();
@@ -35,7 +37,7 @@ export function authorizeFamilySave(current: FamilyState, input: FamilyState, us
       }
     } else {
       if (person.accountId || (person.createdBy && person.createdBy !== userId)) forbidden();
-      if (person.biography && person.biographyBy !== current.viewerId) forbidden();
+      if ((person.biography || person.biographyBy) && person.biographyBy !== current.viewerId) forbidden();
     }
     return { ...person, createdBy: old?.createdBy ?? userId };
   });
@@ -44,6 +46,7 @@ export function authorizeFamilySave(current: FamilyState, input: FamilyState, us
   for (const link of input.links) {
     if (!link || !text(link.id, 300, true) || !ids.has(link.from) || !ids.has(link.to) || link.from === link.to
       || !["parent", "partner", "relative"].includes(link.kind)
+      || (link.complete !== undefined && typeof link.complete !== "boolean")
       || (link.kind === "relative" && !["sibling", "grandparent", "uncle", "aunt", "cousin", "other"].includes(link.relation ?? ""))) invalid();
   }
   if (!uniqueIds(input.links)) invalid();
@@ -58,6 +61,7 @@ export function authorizeFamilySave(current: FamilyState, input: FamilyState, us
     if (!story || !text(story.id, 120, true) || !ids.has(story.subjectId) || !ids.has(story.authorId)
       || !text(story.title, 300, true) || !text(story.html, 100000) || !text(story.source, 4000)
       || !text(story.updated, 40) || !["Draft", "In review", "Published"].includes(story.status) || !Array.isArray(story.reviews)) invalid();
+    if (story.status === "In review" && !story.html.replace(/<[^>]*>/g, "").trim()) invalid();
     const old = current.stories.find(s => s.id === story.id);
     if (equal(old, story)) continue;
     if (!old) {

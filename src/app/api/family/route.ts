@@ -28,6 +28,7 @@ export async function GET() {
     if (!user) return errorResponse("SIGN_IN_REQUIRED", 401);
     return Response.json(await getOrCreateFamily({ id: user.id, email: user.email, name: user.name }), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    if (error instanceof FamilyAccessError) return errorResponse(error.code, error.status);
     return serverFailure("read", error);
   }
 }
@@ -40,7 +41,7 @@ export async function PUT(request: Request) {
     let input: FamilyState;
     try { input = await request.json() as FamilyState; }
     catch { return errorResponse("INVALID_FAMILY_DATA", 400); }
-    return Response.json(await saveFamily({ id: user.id, email: user.email, name: user.name }, input));
+    return Response.json(await saveFamily({ id: user.id, email: user.email, name: user.name }, input), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof FamilyAccessError) return errorResponse(error.code, error.status);
     if (error instanceof InvalidFamilyDataError) return errorResponse("INVALID_FAMILY_DATA", 400);

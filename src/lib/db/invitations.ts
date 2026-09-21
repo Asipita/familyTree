@@ -68,11 +68,12 @@ export async function acceptInvitation(user: AuthUser, token: unknown) {
     await lockUser(tx, user.id);
     const [lookup] = await tx.select({ viewId: invitations.viewId }).from(invitations).where(eq(invitations.tokenHash, tokenHash(token))).limit(1);
     if (!lookup) return invalid();
+    const member = await memberFor(tx, user.id);
     // All operations on an invitation take the tree lock before its row lock.
-    await lockView(tx, lookup.viewId);
+    // Deterministic ordering also handles accounts arriving from another tree.
+    for (const viewId of [...new Set([lookup.viewId, ...(member ? [member.viewId] : [])])].sort()) await lockView(tx, viewId);
     const [invite] = await tx.select().from(invitations).where(eq(invitations.tokenHash, tokenHash(token))).for("update");
     if (!invite || invite.revokedAt) return invalid();
-    const member = await memberFor(tx, user.id);
     // Retrying a successfully accepted link is safe for its recipient only.
     if (invite.acceptedByUserId === user.id && member?.viewId === invite.viewId && member.personId === invite.personId) return { ok: true };
     if (invite.acceptedAt || invite.expiresAt <= new Date()) return invalid();
@@ -84,7 +85,6 @@ export async function acceptInvitation(user: AuthUser, token: unknown) {
       // The provider may have created an empty starting point after sign-up.
       // Never discard an established tree or silently merge two identities.
       if (member.viewId === invite.viewId) throw new FamilyAccessError("INVITATION_EXISTING_TREE", 409);
-      await lockView(tx, member.viewId);
       const personal = await readState(tx, member);
       if (personal.onboardingComplete || personal.people.length !== 1 || personal.links.length || personal.stories.length || personal.requests.length || personal.people[0].biography) throw new FamilyAccessError("INVITATION_EXISTING_TREE", 409);
       // Keep the empty starter records intact; only move this user's viewpoint.

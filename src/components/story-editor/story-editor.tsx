@@ -44,11 +44,12 @@ function WritingDesk({ story, subjectId }: { story?: Story; subjectId?: string }
   });
   if (!subjects.length) return <div className="ft-page"><Empty title="Start with a relative"><p>Add someone to your tree before writing their story.</p><Link className="button button-primary" href="/tree">Open my tree</Link></Empty></div>;
   const person = state.people.find(p => p.id === subject)!;
-  function save(status: Story["status"]) {
+  async function save(status: Story["status"]) {
     if (!editor) return;
     const storyId = id || crypto.randomUUID();
     const next: Story = { id: storyId, subjectId: subject, authorId: state.viewerId, title: title.trim(), html: editor.getHTML(), source, status, updated: new Date().toISOString(), reviews: [] };
-    if (update(s => putStory(s, next))) { setId(storyId); setSaveState("Saved to your tree"); if (status === "In review") router.push(`/stories/${storyId}`); }
+    setSaveState("Saving…");
+    if (await update(s => putStory(s, next))) { setId(storyId); setSaveState("Saved to your tree"); if (status === "In review") router.push(`/stories/${storyId}`); } else setSaveState("Not saved — review the message above");
   }
   const addLink = () => { setUrl(editor?.getAttributes("link").href ?? ""); setLinkOpen(!linkOpen); };
   return <div className="ft-writing">
