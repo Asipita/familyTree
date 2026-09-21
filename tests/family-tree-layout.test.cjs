@@ -110,3 +110,69 @@ test("single-parent and child connectors keep their existing routing", () => {
   assert.ok(graph.edges.every(edge => edge.type === "smoothstep"));
   assert.equal(parentConnectorPath({ sourceX: 100, sourceY: 80, targetX: 100, targetY: 120 }), "M 100 80 V 120");
 });
+
+test("a parent's sibling sits to the left of the adjacent parent pair", () => {
+  const input = family(["self", "father", "uncle", "mother", "grandparent"], [
+    parent("grandparent", "father"), parent("grandparent", "uncle"), parent("father", "self"), parent("mother", "self"),
+  ]);
+  const before = structuredClone(input);
+  for (const state of [input, { ...input, people: [...input.people].reverse(), links: [...input.links].reverse() }]) {
+    const graph = graphFor(state);
+    const father = position(graph, "father"), mother = position(graph, "mother"), uncle = position(graph, "uncle");
+    assert.ok(uncle.x < father.x && father.x < mother.x);
+    assert.equal(mother.x - father.x, 242, "co-parents have one compact card gap");
+    assert.equal(father.y, mother.y);
+    assert.equal(father.y, uncle.y);
+    assert.ok(sharedUnion(graph, "father", "uncle"), "their ancestral connection remains intact");
+    const union = sharedUnion(graph, "self");
+    assert.equal(union.position.x + 6, (father.x + mother.x) / 2 + 101);
+    assert.deepEqual(graphFor(state), graph, "layout is repeatable");
+  }
+  assert.deepEqual(input, before, "layout never changes the saved relationships");
+});
+
+test("declared siblings without known ancestors stay outside their relative's couple", () => {
+  const graph = graphFor(family(["self", "father", "uncle", "mother"], [
+    sibling("father", "uncle"), parent("father", "self"), parent("mother", "self"),
+  ]));
+  const father = position(graph, "father"), mother = position(graph, "mother"), uncle = position(graph, "uncle");
+  assert.equal(Math.abs(father.x - mother.x), 242);
+  assert.equal(Math.abs(father.x - uncle.x), 242);
+  const edge = graph.edges.find(edge => edge.id === "father-uncle");
+  assert.equal(edge.style.strokeDasharray, "7 7");
+  assert.equal(edge.sourceHandle, father.x < uncle.x ? "relative-right-source" : "relative-left-source");
+});
+
+test("multiple couples remain compact within the same generation", () => {
+  const graph = graphFor(family(["self", "sister", "mother", "father", "partner", "sister-partner", "child", "niece"], [
+    parent("mother", "self"), parent("father", "self"), sibling("self", "sister"),
+    parent("self", "child"), parent("partner", "child"), parent("sister", "niece"), parent("sister-partner", "niece"),
+  ]));
+  for (const [a, b] of [["self", "partner"], ["sister", "sister-partner"], ["mother", "father"]]) {
+    assert.equal(Math.abs(position(graph, a).x - position(graph, b).x), 242);
+    assert.equal(position(graph, a).y, position(graph, b).y);
+  }
+  assert.equal(position(graph, "self").y, position(graph, "sister").y);
+  assert.equal(position(graph, "child").y, position(graph, "niece").y);
+});
+
+test("partners without children are kept together beside a sibling", () => {
+  const graph = graphFor(family(["self", "sister", "partner"], [
+    sibling("self", "sister"), { id: "partnership", kind: "partner", from: "self", to: "partner" },
+  ]));
+  assert.equal(Math.abs(position(graph, "self").x - position(graph, "partner").x), 242);
+  assert.equal(Math.abs(position(graph, "self").x - position(graph, "sister").x), 242);
+});
+
+test("overlapping partnerships do not duplicate or overlap cards", () => {
+  const graph = graphFor(family(["self", "partner-a", "partner-b", "sister", "child-a", "child-b"], [
+    sibling("self", "sister"), parent("self", "child-a"), parent("partner-a", "child-a"),
+    parent("self", "child-b"), parent("partner-b", "child-b"),
+    { id: "partnership", kind: "partner", from: "self", to: "partner-a" },
+  ]));
+  const row = graph.nodes.filter(node => node.type === "person" && node.position.y === position(graph, "self").y).sort((a, b) => a.position.x - b.position.x);
+  assert.equal(row.length, 4);
+  assert.equal(new Set(graph.nodes.map(node => node.id)).size, graph.nodes.length);
+  row.slice(1).forEach((node, index) => assert.equal(node.position.x - row[index].position.x, 242));
+  assert.ok([row[0].id, row.at(-1).id].includes("sister"), "other relatives stay outside the connected partner unit");
+});
