@@ -4,6 +4,7 @@ const load = require("./helpers/load-ts.cjs")();
 const { graphFor } = load("src/lib/family-tree-layout.ts");
 const { resolveSiblingConnections } = load("src/lib/family-relationships.ts");
 const { emptyFamily } = load("src/lib/family.ts");
+const { parentConnectorPath } = load("src/lib/parent-connector.ts");
 const person = id => ({ id, name: id, born: "", living: true, biography: "" });
 const parent = (from, to) => ({ id: `${from}-${to}`, kind: "parent", from, to });
 const sibling = (from, to, complete = false) => ({ id: `${from}-${to}`, kind: "relative", relation: "sibling", from, to, complete });
@@ -77,4 +78,35 @@ test("generation alignment keeps all person cards from overlapping", () => {
   for (const a of people) for (const b of people) if (a.id !== b.id && a.position.y === b.position.y) {
     assert.ok(Math.abs(a.position.x - b.position.x) >= 242);
   }
+});
+
+test("two parents use one shared horizontal rail with a centred vertical stem", () => {
+  const graph = graphFor(family(["self", "mother", "father"], [parent("mother", "self"), parent("father", "self")]));
+  const union = sharedUnion(graph, "self");
+  const incoming = graph.edges.filter(edge => edge.target === union.id);
+  assert.equal(incoming.length, 2);
+  assert.ok(incoming.every(edge => edge.type === "parentUnion"));
+  const centreX = union.position.x + 6;
+  assert.equal(centreX, (position(graph, "mother").x + position(graph, "father").x) / 2 + 101);
+  const targetY = union.position.y - 3;
+  for (const edge of incoming) {
+    const source = position(graph, edge.source);
+    const path = parentConnectorPath({ sourceX: source.x + 101, sourceY: source.y + 83, targetX: centreX, targetY });
+    assert.ok(path.endsWith(`${targetY - 20} H ${centreX} V ${targetY}`));
+    assert.equal((path.match(/ H /g) ?? []).length, 1, "no extra horizontal jogs");
+    assert.equal((path.match(/ V /g) ?? []).length, 2, "only the outer drop and central stem");
+  }
+});
+
+test("parent rail height is shared even if handle heights differ", () => {
+  const left = parentConnectorPath({ sourceX: 100, sourceY: 82, targetX: 220, targetY: 120 });
+  const right = parentConnectorPath({ sourceX: 340, sourceY: 86, targetX: 220, targetY: 120 });
+  assert.ok(left.endsWith("100 H 220 V 120"));
+  assert.ok(right.endsWith("100 H 220 V 120"));
+});
+
+test("single-parent and child connectors keep their existing routing", () => {
+  const graph = graphFor(family(["self", "mother"], [parent("mother", "self")]));
+  assert.ok(graph.edges.every(edge => edge.type === "smoothstep"));
+  assert.equal(parentConnectorPath({ sourceX: 100, sourceY: 80, targetX: 100, targetY: 120 }), "M 100 80 V 120");
 });

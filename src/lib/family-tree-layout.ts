@@ -73,7 +73,7 @@ export function graphFor(input: FamilyState): { nodes: Node[]; edges: Edge[] } {
   for (const [key, group] of groups) {
     const unionId = `union:${key}`;
     nodes.push({ id: unionId, type: "union", position: { x: 0, y: 0 }, data: {} });
-    for (const parent of group.parents) edges.push({ id: `${parent}-${unionId}`, source: parent, target: unionId, type: "smoothstep" });
+    for (const parent of group.parents) edges.push({ id: `${parent}-${unionId}`, source: parent, target: unionId, type: group.parents.length > 1 ? "parentUnion" : "smoothstep" });
     for (const child of group.children) edges.push({ id: `${unionId}-${child}`, source: unionId, target: child, type: "smoothstep" });
   }
   const graph = new dagre.graphlib.Graph();
