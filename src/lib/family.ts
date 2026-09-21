@@ -1,13 +1,13 @@
 export type Person = {
   id: string; name: string; born: string; died?: string; living: boolean;
-  biography: string; biographyBy?: string; accountId?: string; gender?: "male" | "female";
+  biography: string; biographyBy?: string; accountId?: string; createdBy?: string; gender?: "male" | "female";
 };
 export type RelativeKind = "sibling" | "grandparent" | "uncle" | "aunt" | "cousin" | "other";
 export type FamilyLink = { id: string; kind: "parent" | "partner" | "relative"; from: string; to: string; relation?: RelativeKind; complete?: boolean };
 export type StoryStatus = "Draft" | "In review" | "Published";
 export type Story = { id: string; subjectId: string; authorId: string; title: string; html: string; source: string; status: StoryStatus; updated: string; reviews: { personId: string; note: string; decision: "Approved" | "Changes requested" }[] };
 export type Request = { id: string; kind: "Invitation" | "Claim" | "Connection"; personId: string; detail: string; status: "Prepared" | "Pending review"; created: string };
-export type FamilyState = { version: 1; viewerId: string; onboardingComplete: boolean; people: Person[]; links: FamilyLink[]; stories: Story[]; requests: Request[]; settings: { email: string; reviewNotifications: boolean; discoverable: boolean } };
+export type FamilyState = { version: 1; revision?: number; viewerId: string; onboardingComplete: boolean; people: Person[]; links: FamilyLink[]; stories: Story[]; requests: Request[]; settings: { email: string; reviewNotifications: boolean; discoverable: boolean } };
 
 export const emptyFamily: FamilyState = {
   version: 1,
@@ -23,6 +23,13 @@ export const emptyFamily: FamilyState = {
 export function initials(name: string) { return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase(); }
 export function lifespan(person: Person) { return `${person.born || "Unknown"} — ${person.living ? "Living" : person.died || "Unknown"}`; }
 export function canWrite(viewerId: string, subjectId: string) { return viewerId !== subjectId; }
+export function canEditProfile(state: FamilyState, person: Person) {
+  const userId = state.people.find(p => p.id === state.viewerId)?.accountId;
+  return !!userId && (person.accountId ? person.accountId === userId : person.createdBy === userId);
+}
+export function canInvite(state: FamilyState, person: Person) {
+  return person.living && !person.accountId && canEditProfile(state, person);
+}
 export function canEditStory(viewerId: string, story: Story) { return story.authorId === viewerId && canWrite(viewerId, story.subjectId); }
 export function connectedPeople(state: FamilyState) {
   const ids = new Set([state.viewerId]);

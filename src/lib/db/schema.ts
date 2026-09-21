@@ -1,4 +1,4 @@
-import { boolean, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -10,6 +10,7 @@ export const familyViews = pgTable("family_views", {
   ownerUserId: text("owner_user_id").notNull().unique(),
   viewerPersonId: text("viewer_person_id").notNull(),
   onboardingComplete: boolean("onboarding_complete").notNull().default(false),
+  revision: integer("revision").notNull().default(0),
   ...timestamps,
 });
 
@@ -23,6 +24,7 @@ export const people = pgTable("people", {
   biography: text("biography").notNull().default(""),
   biographyBy: text("biography_by"),
   accountUserId: text("account_user_id"),
+  createdByUserId: text("created_by_user_id").notNull(),
   gender: text("gender"),
   ...timestamps,
 }, (table) => [
@@ -82,3 +84,29 @@ export const familySettings = pgTable("family_settings", {
   discoverable: boolean("discoverable").notNull().default(false),
   ...timestamps,
 });
+
+// A personal viewpoint into shared records, not a duplicate of someone's tree.
+export const familyMembers = pgTable("family_members", {
+  userId: text("user_id").primaryKey(),
+  viewId: uuid("view_id").notNull().references(() => familyViews.id, { onDelete: "cascade" }),
+  personId: text("person_id").notNull(),
+  onboardingComplete: boolean("onboarding_complete").notNull().default(false),
+  email: text("email").notNull(),
+  reviewNotifications: boolean("review_notifications").notNull().default(true),
+  discoverable: boolean("discoverable").notNull().default(false),
+  ...timestamps,
+}, table => [unique("family_members_view_person").on(table.viewId, table.personId), index("family_members_view").on(table.viewId)]);
+
+export const invitations = pgTable("invitations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  viewId: uuid("view_id").notNull().references(() => familyViews.id, { onDelete: "cascade" }),
+  personId: text("person_id").notNull(),
+  invitedByUserId: text("invited_by_user_id").notNull(),
+  email: text("email").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedByUserId: text("accepted_by_user_id"),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  ...timestamps,
+}, table => [index("invitations_view_person").on(table.viewId, table.personId)]);

@@ -1,154 +1,120 @@
-import { asc, desc, eq } from "drizzle-orm";
-import type { BatchItem } from "drizzle-orm/batch";
+import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { emptyFamily, type FamilyState, type Person, type Story } from "@/lib/family";
-import { getDb } from "@/lib/db/client";
-import { familyLinks, familySettings, familyViews, people, requests, stories, storyReviews } from "@/lib/db/schema";
+import { getDb, withTransaction, type FamilyTransaction } from "@/lib/db/client";
+import { familyLinks, familyMembers, familyViews, people, requests, stories, storyReviews } from "@/lib/db/schema";
 import { retryDatabaseRead } from "@/lib/db/read-retry";
-import { InvalidFamilyDataError } from "@/lib/family-errors";
+import { FamilyAccessError, InvalidFamilyDataError } from "@/lib/family-errors";
 import { resolveSiblingConnections } from "@/lib/family-relationships";
+import { authorizeFamilySave } from "@/lib/family-permissions";
 
-type AuthUser = { id: string; email?: string | null; name?: string | null };
+export type AuthUser = { id: string; email?: string | null; name?: string | null; emailVerified?: boolean };
+export type FamilyMember = typeof familyMembers.$inferSelect;
+type QueryDb = ReturnType<typeof getDb> | FamilyTransaction;
 
-type FamilyRows = {
-  view: typeof familyViews.$inferSelect;
-  people: (typeof people.$inferSelect)[];
-  links: (typeof familyLinks.$inferSelect)[];
-  stories: (typeof stories.$inferSelect)[];
-  reviews: (typeof storyReviews.$inferSelect)[];
-  requests: (typeof requests.$inferSelect)[];
-  settings: typeof familySettings.$inferSelect | undefined;
-};
-type ViewSnapshot = readonly [FamilyRows["view"][], FamilyRows["people"], FamilyRows["links"], FamilyRows["stories"], FamilyRows["reviews"], FamilyRows["requests"], NonNullable<FamilyRows["settings"]>[]];
-
-function asFamilyState(rows: FamilyRows): FamilyState {
-  const reviewsByStory = new Map<string, Story["reviews"]>();
-  for (const review of rows.reviews) {
-    const current = reviewsByStory.get(review.storyId) ?? [];
-    current.push({ personId: review.personId, note: review.note, decision: review.decision as "Approved" | "Changes requested" });
-    reviewsByStory.set(review.storyId, current);
-  }
-
-  return resolveSiblingConnections({
-    version: 1,
-    viewerId: rows.view.viewerPersonId,
-    onboardingComplete: rows.view.onboardingComplete,
-    people: rows.people.map((person): Person => ({
-      id: person.id,
-      name: person.name,
-      born: person.born,
-      ...(person.died ? { died: person.died } : {}),
-      living: person.living,
-      biography: person.biography,
-      ...(person.biographyBy ? { biographyBy: person.biographyBy } : {}),
-      ...(person.accountUserId ? { accountId: person.accountUserId } : {}),
-      ...(person.gender === "male" || person.gender === "female" ? { gender: person.gender } : {}),
-    })),
-    links: rows.links.map((link) => ({ id: link.id, kind: link.kind as "parent" | "partner" | "relative", from: link.fromPersonId, to: link.toPersonId, ...(link.relation ? { relation: link.relation as "sibling" | "grandparent" | "uncle" | "aunt" | "cousin" | "other" } : {}), complete: link.complete })),
-    stories: rows.stories.map((story) => ({
-      id: story.id,
-      subjectId: story.subjectId,
-      authorId: story.authorId,
-      title: story.title,
-      html: story.html,
-      source: story.source,
-      status: story.status as Story["status"],
-      updated: story.updated,
-      reviews: reviewsByStory.get(story.id) ?? [],
-    })),
-    requests: rows.requests.map((request) => ({ id: request.id, kind: request.kind as "Invitation" | "Claim" | "Connection", personId: request.personId, detail: request.detail, status: request.status as "Prepared" | "Pending review", created: request.created })),
-    settings: {
-      email: rows.settings?.email ?? "",
-      reviewNotifications: rows.settings?.reviewNotifications ?? true,
-      discoverable: rows.settings?.discoverable ?? false,
-    },
-  });
+export async function memberFor(db: QueryDb, userId: string) {
+  const [member] = await db.select().from(familyMembers).where(eq(familyMembers.userId, userId)).limit(1);
+  return member;
+}
+export async function lockUser(tx: FamilyTransaction, userId: string) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
+}
+export async function lockView(tx: FamilyTransaction, viewId: string) {
+  const [view] = await tx.select().from(familyViews).where(eq(familyViews.id, viewId)).for("update");
+  if (!view) throw new FamilyAccessError("FAMILY_FORBIDDEN");
+  return view;
 }
 
-function viewQueries(db: ReturnType<typeof getDb>, viewId: string) {
+function viewQueries(db: QueryDb, member: FamilyMember) {
   return [
-    db.select().from(familyViews).where(eq(familyViews.id, viewId)).limit(1),
-    db.select().from(people).where(eq(people.viewId, viewId)).orderBy(asc(people.name)),
-    db.select().from(familyLinks).where(eq(familyLinks.viewId, viewId)).orderBy(asc(familyLinks.id)),
-    db.select().from(stories).where(eq(stories.viewId, viewId)).orderBy(desc(stories.updated)),
-    db.select().from(storyReviews).where(eq(storyReviews.viewId, viewId)).orderBy(asc(storyReviews.createdAt)),
-    db.select().from(requests).where(eq(requests.viewId, viewId)).orderBy(desc(requests.created)),
-    db.select().from(familySettings).where(eq(familySettings.viewId, viewId)).limit(1),
+    db.select().from(familyViews).where(eq(familyViews.id, member.viewId)).limit(1),
+    db.select().from(people).where(eq(people.viewId, member.viewId)).orderBy(asc(people.name)),
+    db.select().from(familyLinks).where(eq(familyLinks.viewId, member.viewId)).orderBy(asc(familyLinks.id)),
+    db.select().from(stories).where(eq(stories.viewId, member.viewId)).orderBy(desc(stories.updated)),
+    db.select().from(storyReviews).where(eq(storyReviews.viewId, member.viewId)).orderBy(asc(storyReviews.createdAt), asc(storyReviews.id)),
+    db.select().from(requests).where(eq(requests.viewId, member.viewId)).orderBy(desc(requests.created)),
+    db.select().from(familyMembers).where(eq(familyMembers.userId, member.userId)).limit(1),
   ] as const;
 }
-
-function fromSnapshot([[view], viewPeople, links, viewStories, reviews, viewRequests, settings]: ViewSnapshot) {
-  if (!view) throw new Error("Family view not found.");
-  return asFamilyState({ view, people: viewPeople, links, stories: viewStories, reviews, requests: viewRequests, settings: settings[0] });
-}
-
-async function readView(viewId: string) {
-  return retryDatabaseRead(async () => {
-    const db = getDb();
-    return fromSnapshot(await db.batch(viewQueries(db, viewId)));
+type QueryResults<T extends readonly unknown[]> = { [K in keyof T]: Awaited<T[K]> };
+type Snapshot = QueryResults<ReturnType<typeof viewQueries>>;
+function fromSnapshot(snapshot: Snapshot): FamilyState {
+  const [[view], viewPeople, links, viewStories, reviews, viewRequests, [member]] = snapshot;
+  if (!view || !member || member.viewId !== view.id) throw new FamilyAccessError("FAMILY_CONFLICT", 409);
+  return resolveSiblingConnections({
+    version: 1, revision: view.revision, viewerId: member.personId, onboardingComplete: member.onboardingComplete,
+    people: viewPeople.map((p): Person => ({ id: p.id, name: p.name, born: p.born, living: p.living, biography: p.biography,
+      createdBy: p.createdByUserId, ...(p.died ? { died: p.died } : {}), ...(p.biographyBy ? { biographyBy: p.biographyBy } : {}),
+      ...(p.accountUserId ? { accountId: p.accountUserId } : {}), ...(p.gender === "male" || p.gender === "female" ? { gender: p.gender } : {}),
+    })),
+    links: links.map(l => ({ id: l.id, kind: l.kind as "parent" | "partner" | "relative", from: l.fromPersonId, to: l.toPersonId,
+      ...(l.relation ? { relation: l.relation as NonNullable<FamilyState["links"][number]["relation"]> } : {}), complete: l.complete })),
+    stories: viewStories.map(s => ({ id: s.id, subjectId: s.subjectId, authorId: s.authorId, title: s.title, html: s.html, source: s.source,
+      status: s.status as Story["status"], updated: s.updated, reviews: reviews.filter(r => r.storyId === s.id).map(r => ({ personId: r.personId, note: r.note, decision: r.decision as "Approved" | "Changes requested" })) })),
+    requests: viewRequests.map(r => ({ id: r.id, kind: r.kind as FamilyState["requests"][number]["kind"], personId: r.personId, detail: r.detail, status: r.status as "Prepared" | "Pending review", created: r.created })),
+    settings: { email: member.email, reviewNotifications: member.reviewNotifications, discoverable: member.discoverable },
   });
 }
-
-function initialFamilyForUser(user: AuthUser): FamilyState {
-  const name = user.name?.trim() || user.email?.split("@")[0] || "You";
-  return {
-    ...emptyFamily,
-    people: [{ id: emptyFamily.viewerId, name, born: "", living: true, biography: "", accountId: user.id }],
-    settings: { ...emptyFamily.settings, email: user.email ?? "" },
-  };
+export async function readState(tx: FamilyTransaction, member: FamilyMember) {
+  return fromSnapshot(await Promise.all(viewQueries(tx, member)) as Snapshot);
 }
 
 export async function getOrCreateFamily(user: AuthUser) {
   const db = getDb();
-  const [existing] = await retryDatabaseRead(() => db.select().from(familyViews).where(eq(familyViews.ownerUserId, user.id)).limit(1).execute());
-  if (existing) return readView(existing.id);
-  const view = await createView(user, initialFamilyForUser(user));
-  return readView(view.id);
-}
-
-async function createView(user: AuthUser, state: FamilyState) {
-  const db = getDb();
-  const [view] = await db.insert(familyViews).values({ ownerUserId: user.id, viewerPersonId: state.viewerId, onboardingComplete: state.onboardingComplete }).returning();
-  if (!view) throw new Error("Could not create the family view.");
-  await db.insert(people).values(state.people.map((person) => ({ viewId: view.id, id: person.id, name: person.name, born: person.born, died: person.died ?? null, living: person.living, biography: person.biography, biographyBy: person.biographyBy ?? null, accountUserId: person.id === state.viewerId ? user.id : null, gender: person.gender ?? null })));
-  if (state.links.length) await db.insert(familyLinks).values(state.links.map((link) => ({ viewId: view.id, id: link.id, kind: link.kind, relation: link.relation ?? null, complete: link.complete ?? true, fromPersonId: link.from, toPersonId: link.to })));
-  if (state.stories.length) await db.insert(stories).values(state.stories.map((story) => ({ viewId: view.id, id: story.id, subjectId: story.subjectId, authorId: story.authorId, title: story.title, html: story.html, source: story.source, status: story.status, updated: story.updated })));
-  const reviews = state.stories.flatMap((story) => story.reviews.map((review) => ({ viewId: view.id, storyId: story.id, personId: review.personId, note: review.note, decision: review.decision })));
-  if (reviews.length) await db.insert(storyReviews).values(reviews);
-  if (state.requests.length) await db.insert(requests).values(state.requests.map((request) => ({ viewId: view.id, id: request.id, kind: request.kind, personId: request.personId, detail: request.detail, status: request.status, created: request.created })));
-  await db.insert(familySettings).values({ viewId: view.id, ...state.settings });
-  return view;
+  const member = await retryDatabaseRead(() => memberFor(db, user.id));
+  if (member) return retryDatabaseRead(async () => fromSnapshot(await db.batch(viewQueries(db, member)) as Snapshot));
+  return withTransaction(async tx => {
+    await lockUser(tx, user.id);
+    const existing = await memberFor(tx, user.id);
+    if (existing) return readState(tx, existing);
+    const viewId = randomUUID();
+    await tx.insert(familyViews).values({ id: viewId, ownerUserId: user.id, viewerPersonId: emptyFamily.viewerId });
+    await tx.insert(people).values({ viewId, id: emptyFamily.viewerId, name: user.name?.trim() || "You", born: "", living: true, biography: "", accountUserId: user.id, createdByUserId: user.id });
+    const [created] = await tx.insert(familyMembers).values({ viewId, userId: user.id, personId: emptyFamily.viewerId, email: user.email ?? "" }).returning();
+    return readState(tx, created);
+  });
 }
 
 export async function saveFamily(user: AuthUser, input: FamilyState) {
   if (!input || input.version !== 1 || !Array.isArray(input.people) || !Array.isArray(input.links)
     || !Array.isArray(input.stories) || !Array.isArray(input.requests) || !input.settings
     || typeof input.onboardingComplete !== "boolean") throw new InvalidFamilyDataError();
-  const db = getDb();
-  const [view] = await retryDatabaseRead(() => db.select().from(familyViews).where(eq(familyViews.ownerUserId, user.id)).limit(1).execute());
-  if (!view) {
-    await createView(user, initialFamilyForUser(user));
-    return saveFamily(user, input);
-  }
-  if (!input.people.some((person) => person?.id === view.viewerPersonId)) throw new InvalidFamilyDataError();
-  const safeState = resolveSiblingConnections({ ...input, viewerId: view.viewerPersonId });
-  const operations: [BatchItem<"pg">, ...BatchItem<"pg">[]] = [
-    db.delete(storyReviews).where(eq(storyReviews.viewId, view.id)),
-    db.delete(stories).where(eq(stories.viewId, view.id)),
-    db.delete(familyLinks).where(eq(familyLinks.viewId, view.id)),
-    db.delete(requests).where(eq(requests.viewId, view.id)),
-    db.delete(people).where(eq(people.viewId, view.id)),
-    db.insert(people).values(safeState.people.map((person) => ({ viewId: view.id, id: person.id, name: person.name, born: person.born, died: person.died ?? null, living: person.living, biography: person.biography, biographyBy: person.biographyBy ?? null, accountUserId: person.id === view.viewerPersonId ? user.id : null, gender: person.gender ?? null }))),
-    ...(safeState.links.length ? [db.insert(familyLinks).values(safeState.links.map((link) => ({ viewId: view.id, id: link.id, kind: link.kind, relation: link.relation ?? null, complete: link.complete ?? true, fromPersonId: link.from, toPersonId: link.to })))] : []),
-    ...(safeState.stories.length ? [db.insert(stories).values(safeState.stories.map((story) => ({ viewId: view.id, id: story.id, subjectId: story.subjectId, authorId: story.authorId, title: story.title, html: story.html, source: story.source, status: story.status, updated: story.updated })))] : []),
-    db.update(familyViews).set({ viewerPersonId: safeState.viewerId, onboardingComplete: safeState.onboardingComplete, updatedAt: new Date() }).where(eq(familyViews.id, view.id)),
-    db.update(familySettings).set({ ...safeState.settings, updatedAt: new Date() }).where(eq(familySettings.viewId, view.id)),
-  ];
-  const reviews = safeState.stories.flatMap((story) => story.reviews.map((review) => ({ viewId: view.id, storyId: story.id, personId: review.personId, note: review.note, decision: review.decision })));
-  if (reviews.length) operations.push(db.insert(storyReviews).values(reviews));
-  if (safeState.requests.length) operations.push(db.insert(requests).values(safeState.requests.map((request) => ({ viewId: view.id, id: request.id, kind: request.kind, personId: request.personId, detail: request.detail, status: request.status, created: request.created }))));
-  // Return the persisted snapshot in the same transaction: no fallible read after commit.
-  // Do not retry this batch automatically; a lost response can hide a committed write.
-  const snapshotQueries = viewQueries(db, view.id);
-  const results = await db.batch([...operations, ...snapshotQueries]);
-  return fromSnapshot(results.slice(-snapshotQueries.length) as unknown as ViewSnapshot);
+  // No automatic write retries: an interrupted response may hide a committed write.
+  return withTransaction(async tx => {
+    await lockUser(tx, user.id);
+    const member = await memberFor(tx, user.id);
+    if (!member) throw new FamilyAccessError("FAMILY_FORBIDDEN");
+    const view = await lockView(tx, member.viewId);
+    const current = await readState(tx, member);
+    const next = authorizeFamilySave(current, input, user.id);
+    const viewId = member.viewId;
+    for (const p of next.people) {
+      const old = current.people.find(item => item.id === p.id);
+      if (isDeepStrictEqual(old, p)) continue;
+      const values = { name: p.name.trim(), born: p.born, died: p.died ?? null, living: p.living, biography: p.biography, biographyBy: p.biographyBy ?? null, gender: p.gender ?? null, updatedAt: new Date() };
+      if (old) await tx.update(people).set(values).where(and(eq(people.viewId, viewId), eq(people.id, p.id)));
+      else await tx.insert(people).values({ ...values, viewId, id: p.id, createdByUserId: user.id });
+    }
+    for (const l of next.links) {
+      const old = current.links.find(item => item.id === l.id);
+      if (old) {
+        if (old.complete !== l.complete) await tx.update(familyLinks).set({ complete: l.complete ?? true }).where(and(eq(familyLinks.viewId, viewId), eq(familyLinks.id, l.id)));
+      } else await tx.insert(familyLinks).values({ viewId, id: l.id, kind: l.kind, relation: l.relation ?? null, fromPersonId: l.from, toPersonId: l.to, complete: l.complete ?? true });
+    }
+    for (const story of next.stories) {
+      const old = current.stories.find(item => item.id === story.id);
+      if (isDeepStrictEqual(old, story)) continue;
+      const { reviews } = story;
+      const values = { id: story.id, subjectId: story.subjectId, authorId: story.authorId, title: story.title, html: story.html, source: story.source, status: story.status, updated: story.updated };
+      if (old) await tx.update(stories).set({ ...values, updatedAt: new Date() }).where(and(eq(stories.viewId, viewId), eq(stories.id, story.id)));
+      else await tx.insert(stories).values({ ...values, viewId });
+      for (const review of reviews.slice(old?.reviews.length ?? 0)) await tx.insert(storyReviews).values({ ...review, viewId, storyId: story.id });
+    }
+    for (const r of next.requests.filter(r => !current.requests.some(old => old.id === r.id))) await tx.insert(requests).values({ id: r.id, kind: r.kind, personId: r.personId, detail: r.detail, status: r.status, created: r.created, viewId });
+    await tx.update(familyMembers).set({ email: user.email ?? member.email, reviewNotifications: next.settings.reviewNotifications, discoverable: next.settings.discoverable, onboardingComplete: next.onboardingComplete, updatedAt: new Date() }).where(eq(familyMembers.userId, user.id));
+    await tx.update(familyViews).set({ revision: view.revision + 1, updatedAt: new Date() }).where(eq(familyViews.id, viewId));
+    // Snapshot and permission checks are in the write transaction, never after commit.
+    return readState(tx, member);
+  });
 }

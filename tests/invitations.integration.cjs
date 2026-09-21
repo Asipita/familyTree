@@ -1,0 +1,90 @@
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const { randomUUID } = require("node:crypto");
+const { eq, and } = require("drizzle-orm");
+const createLoader = require("./helpers/load-ts.cjs");
+
+// Opt-in only. Supply a disposable Neon branch URL, never the live app URL.
+test("shared invitation lifecycle and permissions on a migrated Neon test branch", { skip: !process.env.FAMILYTREE_TEST_DATABASE_URL, timeout: 240000 }, async () => {
+  process.env.DATABASE_URL = process.env.FAMILYTREE_TEST_DATABASE_URL;
+  const load = createLoader();
+  const { getDb } = load("src/lib/db/client.ts");
+  const { familyViews, familyMembers, invitations, people } = load("src/lib/db/schema.ts");
+  const { getOrCreateFamily, saveFamily } = load("src/lib/db/family-repository.ts");
+  const { createInvitation, previewInvitation, acceptInvitation, listInvitations, revokeInvitation } = load("src/lib/db/invitations.ts");
+  const { putStory } = load("src/lib/family.ts");
+  const db = getDb();
+  const prefix = `invite-test-${randomUUID()}`;
+  const user = suffix => ({ id: `${prefix}-${suffix}`, email: `${prefix}-${suffix}@example.invalid`, name: suffix, emailVerified: true });
+  const host = user("host"), guest = user("guest"), outsider = user("outsider"), expiredUser = user("expired"), established = user("established");
+  const users = [host, guest, outsider, expiredUser, established];
+  const token = invitation => new URL(`http://localhost${invitation.path}`).searchParams.get("invite");
+  const denied = (operation, code) => assert.rejects(operation, error => error.code === code);
+  const relative = id => ({ id, name: id, born: "1990", living: true, biography: "" });
+  try {
+    let state = await getOrCreateFamily(host);
+    state.people.push(relative("guest"), relative("uncle"), relative("expired"), relative("established"));
+    state.links.push(...["guest", "uncle", "expired", "established"].map(to => ({ id: to, kind: "parent", from: state.viewerId, to })));
+    state.onboardingComplete = true;
+    state = await saveFamily(host, state);
+    state = await saveFamily(host, putStory(state, { id: "memory", subjectId: "guest", authorId: state.viewerId, title: "A family memory", html: "<p>Written before joining.</p>", source: "Family", status: "Draft", updated: new Date().toISOString(), reviews: [] }));
+    await getOrCreateFamily(outsider);
+    await denied(createInvitation(outsider, "guest", guest.email), "FAMILY_FORBIDDEN");
+    const invite = await createInvitation(host, "guest", guest.email);
+    const key = token(invite);
+    assert.equal((await previewInvitation(key)).name, "guest");
+    assert.doesNotMatch(JSON.stringify(await listInvitations(host)), /tokenHash|token_hash|join\?/);
+    await denied(acceptInvitation(outsider, key), "INVITATION_EMAIL");
+    await denied(acceptInvitation({ ...guest, emailVerified: false }, key), "INVITATION_VERIFY_EMAIL");
+    // An empty automatic starter must not prevent claiming the existing node.
+    await getOrCreateFamily(guest);
+    await Promise.all([acceptInvitation(guest, key), acceptInvitation(guest, key)]);
+    let joined = await getOrCreateFamily(guest);
+    assert.equal(joined.viewerId, "guest"); assert.equal(joined.onboardingComplete, true);
+    assert.equal(joined.people.length, 5); assert.equal(joined.stories[0].title, "A family memory");
+    assert.equal(joined.people.find(p => p.id === "guest").accountId, guest.id);
+    await denied(acceptInvitation(outsider, key), "INVITATION_INVALID");
+    const beforeEdit = structuredClone(joined);
+    joined.people.find(p => p.id === "guest").name = "Claimed name";
+    joined = await saveFamily(guest, joined);
+    assert.equal((await getOrCreateFamily(host)).people.find(p => p.id === "guest").name, "Claimed name");
+    await denied(saveFamily(guest, beforeEdit), "FAMILY_CONFLICT");
+    let tampered = structuredClone(joined); tampered.people.find(p => p.id === "uncle").name = "Not allowed";
+    await denied(saveFamily(guest, tampered), "FAMILY_FORBIDDEN");
+    tampered = structuredClone(joined); tampered.people.find(p => p.id === "guest").biography = "Own biography";
+    await denied(saveFamily(guest, tampered), "FAMILY_FORBIDDEN");
+    tampered = structuredClone(joined); tampered.stories[0].html = "Own story rewrite";
+    await denied(saveFamily(guest, tampered), "FAMILY_FORBIDDEN");
+    joined.people.push(relative("new-child")); joined.links.push({ id: "guest-child", kind: "parent", from: "guest", to: "new-child" });
+    joined = await saveFamily(guest, joined);
+    assert.equal(joined.people.find(p => p.id === "new-child").createdBy, guest.id);
+    joined = await saveFamily(guest, putStory(joined, { id: "guest-memory", subjectId: "uncle", authorId: "guest", title: "Another memory", html: "<p>A new voice.</p>", source: "Family", status: "Draft", updated: new Date().toISOString(), reviews: [] }));
+    let shared = await getOrCreateFamily(host);
+    assert.equal(shared.people.length, 6); assert.equal(shared.stories.length, 2);
+    shared.people.find(p => p.id === "guest").name = "Creator overwrite";
+    await denied(saveFamily(host, shared), "FAMILY_FORBIDDEN");
+    await denied(createInvitation(guest, "uncle", outsider.email), "FAMILY_FORBIDDEN");
+    const renewed = await createInvitation(host, "expired", expiredUser.email);
+    const replaced = await createInvitation(host, "expired", expiredUser.email);
+    await denied(acceptInvitation(expiredUser, token(renewed)), "INVITATION_INVALID");
+    await revokeInvitation(host, replaced.id);
+    await denied(acceptInvitation(expiredUser, token(replaced)), "INVITATION_INVALID");
+    const expiring = await createInvitation(host, "expired", expiredUser.email);
+    await db.update(invitations).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(invitations.id, expiring.id));
+    await denied(acceptInvitation(expiredUser, token(expiring)), "INVITATION_INVALID");
+    let personal = await getOrCreateFamily(established); personal.onboardingComplete = true;
+    personal = await saveFamily(established, personal);
+    const existingInvite = await createInvitation(host, "established", established.email);
+    await denied(acceptInvitation(established, token(existingInvite)), "INVITATION_EXISTING_TREE");
+    assert.deepEqual(await getOrCreateFamily(established), personal);
+    const [hostMember] = await db.select().from(familyMembers).where(eq(familyMembers.userId, host.id));
+    const [guestMember] = await db.select().from(familyMembers).where(eq(familyMembers.userId, guest.id));
+    assert.equal(hostMember.viewId, guestMember.viewId);
+    const claimed = await db.select().from(people).where(and(eq(people.viewId, hostMember.viewId), eq(people.accountUserId, guest.id)));
+    assert.equal(claimed.length, 1);
+    console.log("Verified claims, replay, expiry, revocation, shared writes, story protection, creator permissions, and stale-save conflicts.");
+  } finally {
+    // Delete only synthetic fixture trees owned by these generated test users.
+    for (const account of users) await db.delete(familyViews).where(eq(familyViews.ownerUserId, account.id));
+  }
+});
