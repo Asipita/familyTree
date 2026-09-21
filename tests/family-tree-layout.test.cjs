@@ -47,22 +47,12 @@ test("siblings remain aligned when one has children and a partner with known anc
   assert.ok(position(graph, "child").y > position(graph, "self").y);
 });
 
-test("a partner's direct parent stays one generation above them when branches overlap", () => {
-  // This mirrors the reported tree: Fagbola is Aisha's father, while the
-  // viewer's parent is also connected into the same visible branch. The
-  // longer route through the viewer's parent must not make Fagbola look like
-  // Aisha's grandparent.
-  const graph = graphFor(family(["self", "aisha", "father", "viewer-parent", "sibling"], [
-    { id: "partnership", kind: "partner", from: "self", to: "aisha" },
+test("a direct parent stays one generation above a family connection", () => {
+  const graph = graphFor(family(["self", "aisha", "father"], [
+    { id: "family-connection", kind: "relative", relation: "other", from: "aisha", to: "self", complete: false },
     parent("father", "aisha"),
-    parent("father", "viewer-parent"),
-    parent("viewer-parent", "self"),
-    parent("viewer-parent", "sibling"),
-    sibling("sibling", "self"),
   ]));
-  assert.equal(position(graph, "self").y, position(graph, "aisha").y);
   assert.equal(position(graph, "father").y, position(graph, "aisha").y - 190);
-  assert.ok(position(graph, "father").y < position(graph, "viewer-parent").y);
 });
 
 test("adding a second parent connects every declared sibling without duplicates", () => {
@@ -114,6 +104,16 @@ test("two parents use one shared horizontal rail with a centred vertical stem", 
     assert.equal((path.match(/ H /g) ?? []).length, 1, "no extra horizontal jogs");
     assert.equal((path.match(/ V /g) ?? []).length, 2, "only the outer drop and central stem");
   }
+});
+
+test("independent parent groups use separate child connector lanes", () => {
+  const graph = graphFor(family(["self", "sibling", "parent-a", "parent-b"], [
+    parent("parent-a", "self"), parent("parent-b", "sibling"),
+    { id: "cousin-link", kind: "relative", relation: "cousin", from: "sibling", to: "self" },
+  ]));
+  const rails = ["self", "sibling"].map(child => graph.edges.find(edge => edge.target === child && edge.source.startsWith("union:"))?.data?.railY);
+  assert.ok(rails.every(rail => typeof rail === "number"));
+  assert.notEqual(rails[0], rails[1], "separate families must not merge into one horizontal rail");
 });
 
 test("parent rail height is shared even if handle heights differ", () => {

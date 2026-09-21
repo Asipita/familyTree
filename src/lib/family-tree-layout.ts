@@ -85,8 +85,9 @@ function arrangeRow(row: Node[], groups: FamilyGroup[], state: FamilyState) {
 }
 
 // Rank people, not relationship edges: siblings and partners share a generation.
-// Only `parent` links define structural distance; "grandparent"/"uncle"/"aunt"
-// labels are hints that never override a shorter direct parent chain.
+// Direct `parent` links define structural distance. Provisional relationship
+// labels add the missing generation hint when a connector has not been filled
+// in yet (for example, a grandparent whose parent is not in this view).
 //
 // Same-rank grouping rules (union-find members share a row):
 //   1. partners always share a row
@@ -95,13 +96,8 @@ function arrangeRow(row: Node[], groups: FamilyGroup[], state: FamilyState) {
 //   4. two people are co-parents (share ≥ 1 declared child via parent links) → same row
 //
 // We intentionally do NOT union two people just because they share a parent.
-// Counter-example: FN has children SHm and AF. SHm herself has a child AA, and
-// AF partners AA. SHm must be one generation above AA; AF shares AA's row.
-// Even though SHm and AF share FN as a parent, they are NOT same-rank, because
-// SHm's descendants place her on an upper row. Siblings can only share a row
-// when they share no cross-generation chains, which is exactly what a declared
-// `relative: sibling` link captures. Topological leveling then correctly
-// assigns their row via `parent` edges.
+// That keeps an uncle/parent branch from collapsing into a child's row when
+// the family view is only partially connected.
 function generationLevels(state: FamilyState, ids: Set<string>) {
   const roots = new Map([...ids].map(id => [id, id]));
   function root(id: string): string {
@@ -129,37 +125,35 @@ function generationLevels(state: FamilyState, ids: Set<string>) {
     for (let i = 1; i < parents.length; i++) join(parents[0], parents[i]);
   }
 
-  // Structural topological walk over parent links only (distance = 1 per step).
-  // Use the shortest available path when a partner row is also reached through
-  // another branch. A direct parent link is the clearest relationship here, so
-  // it must not be pushed down by a longer route through the viewer's family.
-  const levels = new Map<string, number>();
-  for (const id of new Set(roots.values())) levels.set(id, Infinity);
+  // Structural topological walk. Parent links are authoritative; explicit
+  // provisional labels provide distance when the connecting parent is absent.
+  const levels = new Map([...new Set(roots.values())].map(id => [id, 0]));
   const incoming = new Map<string, number>();
   const descendants = new Map<string, Map<string, number>>();
   for (const id of levels.keys()) { incoming.set(id, 0); descendants.set(id, new Map()); }
   for (const link of links) {
-    if (link.kind !== "parent") continue;
+    const distance = link.kind === "parent" ? 1
+      : link.kind === "relative" && link.relation === "grandparent" ? 2
+      : link.kind === "relative" && ["uncle", "aunt"].includes(link.relation ?? "") ? 1
+      : 0;
+    if (!distance) continue;
     const from = root(link.from), to = root(link.to);
     if (from === to) continue;
     const children = descendants.get(from)!;
     if (!children.has(to)) incoming.set(to, (incoming.get(to) ?? 0) + 1);
-    children.set(to, Math.max(1, children.get(to) ?? 0));
+    children.set(to, Math.max(distance, children.get(to) ?? 0));
   }
-  const pending = [...incoming].filter(([, count]) => count === 0).map(([id]) => {
-    levels.set(id, 0);
-    return id;
-  });
+  const pending = [...incoming].filter(([, count]) => count === 0).map(([id]) => id);
   while (pending.length) {
     const id = pending.shift()!;
     for (const [child, distance] of descendants.get(id) ?? []) {
-      levels.set(child, Math.min(levels.get(child)!, (levels.get(id) ?? 0) + distance));
+      levels.set(child, Math.max(levels.get(child)!, (levels.get(id) ?? 0) + distance));
       const remaining = (incoming.get(child) ?? 0) - 1;
       incoming.set(child, remaining);
       if (remaining === 0) pending.push(child);
     }
   }
-  return new Map([...ids].map(id => [id, Number.isFinite(levels.get(root(id))!) ? levels.get(root(id))! : 0]));
+  return new Map([...ids].map(id => [id, levels.get(root(id))!]));
 }
 
 export function graphFor(input: FamilyState): { nodes: Node[]; edges: Edge[] } {
@@ -222,10 +216,32 @@ export function graphFor(input: FamilyState): { nodes: Node[]; edges: Edge[] } {
       style: link.complete === false ? { strokeDasharray: "7 7", stroke: "#b69c77" } : { stroke: "#9daa99" },
     });
   }
-  // Once every node has a position, tag custom connector edges with the full set
-  // of person boxes so their path functions can route the horizontal rail around
-  // cards instead of drawing straight through the middle of one.
+  // Once every node has a position, give each family group its own connector
+  // lane. Without this, independent parent groups that share a generation
+  // produce one visually merged rail across the whole tree.
   const boxes = personBoxes(nodes, PERSON_WIDTH, PERSON_HEIGHT);
-  for (const edge of edges) if (edge.type === "parentUnion" || edge.type === "unionStem") edge.data = { boxes };
+  const groupByUnion = new Map<string, { key: string; group: FamilyGroup }>();
+  for (const [key, group] of groups) groupByUnion.set(`union:${key}`, { key, group });
+  const childBuckets = new Map<string, string[]>();
+  for (const [unionId, entry] of groupByUnion) {
+    if (!entry.group.children.length) continue;
+    const union = byId.get(unionId)!;
+    const childY = Math.min(...entry.group.children.map(id => byId.get(id)!.position.y));
+    const key = `${union.position.y}:${childY}`;
+    const bucket = childBuckets.get(key) ?? [];
+    bucket.push(unionId); childBuckets.set(key, bucket);
+  }
+  const childRailByUnion = new Map<string, number>();
+  for (const [bucketKey, unionIds] of childBuckets) {
+    const [unionY, childY] = bucketKey.split(":").map(Number);
+    const start = unionY + 12;
+    const gap = childY - start;
+    unionIds.sort((a, b) => byId.get(a)!.position.x - byId.get(b)!.position.x);
+    unionIds.forEach((unionId, index) => childRailByUnion.set(unionId, start + gap * (index + 1) / (unionIds.length + 1)));
+  }
+  for (const edge of edges) if (edge.type === "parentUnion" || edge.type === "unionStem") {
+    const unionId = edge.source.startsWith("union:") ? edge.source : edge.target.startsWith("union:") ? edge.target : "";
+    edge.data = { boxes, railY: edge.source === unionId ? childRailByUnion.get(unionId) : undefined };
+  }
   return { nodes, edges };
 }

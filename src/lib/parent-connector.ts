@@ -6,10 +6,10 @@ function overlapsHorizontalRail(railY: number, xStart: number, xEnd: number, box
   return box.top - padding < railY && railY < box.bottom + padding && xA < box.right && xB > box.left;
 }
 
-function pickRailY(preferred: number, sourceY: number, targetY: number, sourceX: number, targetX: number, boxes: Bounds[]) {
+function pickRailY(preferred: number, sourceY: number, targetY: number, sourceX: number, targetX: number, boxes: Bounds[], requested?: number) {
   const lo = Math.min(sourceY, targetY);
   const hi = Math.max(sourceY, targetY);
-  const candidates = [preferred];
+  const candidates = [requested ?? preferred];
   for (const box of boxes) {
     candidates.push(box.top - 12, box.bottom + 12);
   }
@@ -25,11 +25,11 @@ function pickRailY(preferred: number, sourceY: number, targetY: number, sourceX:
   return best;
 }
 
-export function parentConnectorPath({ sourceX, sourceY, targetX, targetY }: ConnectorPoints, boxes: Bounds[] = []) {
+export function parentConnectorPath({ sourceX, sourceY, targetX, targetY }: ConnectorPoints, boxes: Bounds[] = [], requestedRailY?: number) {
   if (sourceX === targetX) return `M ${sourceX} ${sourceY} V ${targetY}`;
   // Every parent entering this union uses the same horizontal rail. Generic
   // smooth-step routing adds independent handle offsets, producing small jogs.
-  const railY = pickRailY(targetY - 20, sourceY, targetY, sourceX, targetX, boxes);
+  const railY = pickRailY(targetY - 20, sourceY, targetY, sourceX, targetX, boxes, requestedRailY);
   const direction = Math.sign(targetX - sourceX);
   const vertical = railY - sourceY;
   const radius = Math.min(4, Math.abs(targetX - sourceX), Math.max(0, vertical));
@@ -40,9 +40,9 @@ export function parentConnectorPath({ sourceX, sourceY, targetX, targetY }: Conn
 // placed so it never runs through any card box; the vertical stem joins at the
 // rail and the end connects to the target. This guarantees no connector line
 // passes *behind* a person node even when source/target are far apart.
-export function unionConnectorPath({ sourceX, sourceY, targetX, targetY }: ConnectorPoints, boxes: Bounds[] = []) {
+export function unionConnectorPath({ sourceX, sourceY, targetX, targetY }: ConnectorPoints, boxes: Bounds[] = [], requestedRailY?: number) {
   if (sourceX === targetX) return `M ${sourceX} ${sourceY} V ${targetY}`;
-  const railY = pickRailY((sourceY + targetY) / 2, sourceY, targetY, sourceX, targetX, boxes);
+  const railY = pickRailY((sourceY + targetY) / 2, sourceY, targetY, sourceX, targetX, boxes, requestedRailY);
   const dirTarget = Math.sign(targetX - sourceX);
   const dirSource = Math.sign(sourceX - targetX);
   const down = railY - sourceY;

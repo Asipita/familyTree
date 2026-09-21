@@ -16,13 +16,13 @@ function PersonNode({ data }: NodeProps) { return <div className={`ft-node ${dat
 function UnionNode() { return <div className="ft-union"><Handle type="target" position={Position.Top} /><span /><Handle type="source" position={Position.Bottom} /></div>; }
 const nodeTypes = { person: PersonNode, union: UnionNode };
 function ParentUnionEdge(props: EdgeProps) {
-  const boxes = (props.data?.boxes as unknown[]) ?? [];
-  const path = (parentConnectorPath as unknown as (p: { sourceX: number; sourceY: number; targetX: number; targetY: number }, b: unknown[]) => string)(props, boxes);
+  const data = (props.data as { boxes?: unknown[]; railY?: number } | undefined) ?? {};
+  const path = (parentConnectorPath as unknown as (p: { sourceX: number; sourceY: number; targetX: number; targetY: number }, b: unknown[], r?: number) => string)(props, data.boxes ?? [], data.railY);
   return <BaseEdge id={props.id} path={path} style={props.style} markerStart={props.markerStart} markerEnd={props.markerEnd} interactionWidth={props.interactionWidth} />;
 }
 function UnionStemEdge(props: EdgeProps) {
-  const boxes = (props.data?.boxes as unknown[]) ?? [];
-  const path = (unionConnectorPath as unknown as (p: { sourceX: number; sourceY: number; targetX: number; targetY: number }, b: unknown[]) => string)(props, boxes);
+  const data = (props.data as { boxes?: unknown[]; railY?: number } | undefined) ?? {};
+  const path = (unionConnectorPath as unknown as (p: { sourceX: number; sourceY: number; targetX: number; targetY: number }, b: unknown[], r?: number) => string)(props, data.boxes ?? [], data.railY);
   return <BaseEdge id={props.id} path={path} style={props.style} markerStart={props.markerStart} markerEnd={props.markerEnd} interactionWidth={props.interactionWidth} />;
 }
 const edgeTypes = { parentUnion: ParentUnionEdge, unionStem: UnionStemEdge };
