@@ -10,15 +10,22 @@ import { canWrite, canInvite, canEditProfile, connectedPeople, initials, lifespa
 import { graphFor } from "@/lib/family-tree-layout";
 import { resolveSiblingConnections } from "@/lib/family-relationships";
 import { EditProfileButton } from "./profile-editor";
-import { parentConnectorPath } from "@/lib/parent-connector";
+import { parentConnectorPath, unionConnectorPath } from "@/lib/parent-connector";
 
 function PersonNode({ data }: NodeProps) { return <div className={`ft-node ${data.own ? "ft-node-own" : ""}`}><Handle type="target" position={Position.Top} /><span className="ft-avatar">{String(data.initials)}</span><span><strong>{String(data.name)}</strong><small>{String(data.dates)}</small><em>{String(data.relation)}</em></span><Handle type="source" position={Position.Bottom} /><Handle id="relative-left-source" type="source" position={Position.Left} /><Handle id="relative-right-source" type="source" position={Position.Right} /><Handle id="relative-left-target" type="target" position={Position.Left} /><Handle id="relative-right-target" type="target" position={Position.Right} /></div>; }
 function UnionNode() { return <div className="ft-union"><Handle type="target" position={Position.Top} /><span /><Handle type="source" position={Position.Bottom} /></div>; }
 const nodeTypes = { person: PersonNode, union: UnionNode };
 function ParentUnionEdge(props: EdgeProps) {
-  return <BaseEdge id={props.id} path={parentConnectorPath(props)} style={props.style} markerStart={props.markerStart} markerEnd={props.markerEnd} interactionWidth={props.interactionWidth} />;
+  const boxes = (props.data?.boxes as unknown[]) ?? [];
+  const path = (parentConnectorPath as unknown as (p: { sourceX: number; sourceY: number; targetX: number; targetY: number }, b: unknown[]) => string)(props, boxes);
+  return <BaseEdge id={props.id} path={path} style={props.style} markerStart={props.markerStart} markerEnd={props.markerEnd} interactionWidth={props.interactionWidth} />;
 }
-const edgeTypes = { parentUnion: ParentUnionEdge };
+function UnionStemEdge(props: EdgeProps) {
+  const boxes = (props.data?.boxes as unknown[]) ?? [];
+  const path = (unionConnectorPath as unknown as (p: { sourceX: number; sourceY: number; targetX: number; targetY: number }, b: unknown[]) => string)(props, boxes);
+  return <BaseEdge id={props.id} path={path} style={props.style} markerStart={props.markerStart} markerEnd={props.markerEnd} interactionWidth={props.interactionWidth} />;
+}
+const edgeTypes = { parentUnion: ParentUnionEdge, unionStem: UnionStemEdge };
 function FitTree({ revision }: { revision: number }) { const { fitView } = useReactFlow(); useEffect(() => { const timer = setTimeout(() => void fitView({ padding: .3, duration: 250, maxZoom: 1 }), 100); return () => clearTimeout(timer); }, [fitView, revision]); return null; }
 
 export function TreePage() {

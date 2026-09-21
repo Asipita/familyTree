@@ -4,7 +4,7 @@ const load = require("./helpers/load-ts.cjs")();
 const { graphFor } = load("src/lib/family-tree-layout.ts");
 const { resolveSiblingConnections } = load("src/lib/family-relationships.ts");
 const { emptyFamily } = load("src/lib/family.ts");
-const { parentConnectorPath } = load("src/lib/parent-connector.ts");
+const { parentConnectorPath, unionConnectorPath } = load("src/lib/parent-connector.ts");
 const person = id => ({ id, name: id, born: "", living: true, biography: "" });
 const parent = (from, to) => ({ id: `${from}-${to}`, kind: "parent", from, to });
 const sibling = (from, to, complete = false) => ({ id: `${from}-${to}`, kind: "relative", relation: "sibling", from, to, complete });
@@ -45,6 +45,24 @@ test("siblings remain aligned when one has children and a partner with known anc
   assert.equal(position(graph, "self").y, position(graph, "sister").y);
   assert.equal(position(graph, "partner").y, position(graph, "sister").y);
   assert.ok(position(graph, "child").y > position(graph, "self").y);
+});
+
+test("a partner's direct parent stays one generation above them when branches overlap", () => {
+  // This mirrors the reported tree: Fagbola is Aisha's father, while the
+  // viewer's parent is also connected into the same visible branch. The
+  // longer route through the viewer's parent must not make Fagbola look like
+  // Aisha's grandparent.
+  const graph = graphFor(family(["self", "aisha", "father", "viewer-parent", "sibling"], [
+    { id: "partnership", kind: "partner", from: "self", to: "aisha" },
+    parent("father", "aisha"),
+    parent("father", "viewer-parent"),
+    parent("viewer-parent", "self"),
+    parent("viewer-parent", "sibling"),
+    sibling("sibling", "self"),
+  ]));
+  assert.equal(position(graph, "self").y, position(graph, "aisha").y);
+  assert.equal(position(graph, "father").y, position(graph, "aisha").y - 190);
+  assert.ok(position(graph, "father").y < position(graph, "viewer-parent").y);
 });
 
 test("adding a second parent connects every declared sibling without duplicates", () => {
@@ -105,10 +123,19 @@ test("parent rail height is shared even if handle heights differ", () => {
   assert.ok(right.endsWith("100 H 220 V 120"));
 });
 
-test("single-parent and child connectors keep their existing routing", () => {
+test("single-parent and child connectors use routed union stems that avoid card overlaps", () => {
   const graph = graphFor(family(["self", "mother"], [parent("mother", "self")]));
-  assert.ok(graph.edges.every(edge => edge.type === "smoothstep"));
+  const union = sharedUnion(graph, "self");
+  assert.ok(union);
+  // Single-parent → union and union → child both go through routed stems now so
+  // their rails can shift horizontally around intermediate cards (Bug 2 fix).
+  const parentEdge = graph.edges.find(edge => edge.source === "mother" && edge.target === union.id);
+  const childEdge = graph.edges.find(edge => edge.source === union.id && edge.target === "self");
+  assert.equal(parentEdge?.type, "unionStem");
+  assert.equal(childEdge?.type, "unionStem");
+  // Collinear short paths still collapse to a single vertical stem.
   assert.equal(parentConnectorPath({ sourceX: 100, sourceY: 80, targetX: 100, targetY: 120 }), "M 100 80 V 120");
+  assert.equal(unionConnectorPath({ sourceX: 100, sourceY: 80, targetX: 100, targetY: 120 }), "M 100 80 V 120");
 });
 
 test("a parent's sibling sits to the left of the adjacent parent pair", () => {

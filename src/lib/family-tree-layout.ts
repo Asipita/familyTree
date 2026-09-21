@@ -2,6 +2,7 @@ import dagre from "dagre";
 import type { Edge, Node } from "@xyflow/react";
 import { connectedPeople, initials, lifespan, relationTo, type FamilyState } from "@/lib/family";
 import { resolveSiblingConnections } from "@/lib/family-relationships";
+import { personBoxes } from "@/lib/parent-connector";
 
 const PERSON_WIDTH = 202;
 const PERSON_HEIGHT = 80;
@@ -84,6 +85,23 @@ function arrangeRow(row: Node[], groups: FamilyGroup[], state: FamilyState) {
 }
 
 // Rank people, not relationship edges: siblings and partners share a generation.
+// Only `parent` links define structural distance; "grandparent"/"uncle"/"aunt"
+// labels are hints that never override a shorter direct parent chain.
+//
+// Same-rank grouping rules (union-find members share a row):
+//   1. partners always share a row
+//   2. declared siblings always share a row
+//   3. cousins share a row (both are grandchildren of the same ancestor via relative tag)
+//   4. two people are co-parents (share ≥ 1 declared child via parent links) → same row
+//
+// We intentionally do NOT union two people just because they share a parent.
+// Counter-example: FN has children SHm and AF. SHm herself has a child AA, and
+// AF partners AA. SHm must be one generation above AA; AF shares AA's row.
+// Even though SHm and AF share FN as a parent, they are NOT same-rank, because
+// SHm's descendants place her on an upper row. Siblings can only share a row
+// when they share no cross-generation chains, which is exactly what a declared
+// `relative: sibling` link captures. Topological leveling then correctly
+// assigns their row via `parent` edges.
 function generationLevels(state: FamilyState, ids: Set<string>) {
   const roots = new Map([...ids].map(id => [id, id]));
   function root(id: string): string {
@@ -93,36 +111,55 @@ function generationLevels(state: FamilyState, ids: Set<string>) {
   }
   function join(a: string, b: string) { if (ids.has(a) && ids.has(b)) roots.set(root(b), root(a)); }
   const links = state.links.filter(link => ids.has(link.from) && ids.has(link.to));
+
+  // 1. partners & declared siblings / cousins → same row
   for (const link of links) {
-    if (link.kind === "partner" || (link.kind === "relative" && ["sibling", "cousin"].includes(link.relation ?? ""))) join(link.from, link.to);
-  }
-  for (const id of ids) {
-    const parents = links.filter(link => link.kind === "parent" && link.to === id).map(link => link.from);
-    const children = links.filter(link => link.kind === "parent" && link.from === id).map(link => link.to);
-    for (const parent of parents.slice(1)) join(parents[0], parent);
-    for (const child of children.slice(1)) join(children[0], child);
-  }
-  const levels = new Map([...ids].map(id => [root(id), 0]));
-  const incoming = new Map([...levels.keys()].map(id => [id, 0]));
-  const descendants = new Map([...levels.keys()].map(id => [id, new Map<string, number>()]));
-  for (const link of links) {
-    const distance = link.kind === "parent" ? 1 : link.kind === "relative" && link.relation === "grandparent" ? 2 : link.kind === "relative" && ["uncle", "aunt"].includes(link.relation ?? "") ? 1 : 0;
-    const from = root(link.from), to = root(link.to);
-    if (!distance || from === to) continue;
-    const children = descendants.get(from)!;
-    if (!children.has(to)) incoming.set(to, incoming.get(to)! + 1);
-    children.set(to, Math.max(distance, children.get(to) ?? 0));
-  }
-  const pending = [...incoming].filter(([, count]) => count === 0).map(([id]) => id);
-  while (pending.length) {
-    const id = pending.shift()!;
-    for (const [child, distance] of descendants.get(id)!) {
-      levels.set(child, Math.max(levels.get(child)!, levels.get(id)! + distance));
-      incoming.set(child, incoming.get(child)! - 1);
-      if (incoming.get(child) === 0) pending.push(child);
+    if (link.kind === "partner" || (link.kind === "relative" && ["sibling", "cousin"].includes(link.relation ?? ""))) {
+      join(link.from, link.to);
     }
   }
-  return new Map([...ids].map(id => [id, levels.get(root(id))!]));
+  // 4. co-parents of the same declared child → same row
+  const parentsOfChild = new Map<string, string[]>();
+  for (const link of links) {
+    if (link.kind !== "parent") continue;
+    const list = parentsOfChild.get(link.to) ?? [];
+    list.push(link.from); parentsOfChild.set(link.to, list);
+  }
+  for (const [, parents] of parentsOfChild) {
+    for (let i = 1; i < parents.length; i++) join(parents[0], parents[i]);
+  }
+
+  // Structural topological walk over parent links only (distance = 1 per step).
+  // Use the shortest available path when a partner row is also reached through
+  // another branch. A direct parent link is the clearest relationship here, so
+  // it must not be pushed down by a longer route through the viewer's family.
+  const levels = new Map<string, number>();
+  for (const id of new Set(roots.values())) levels.set(id, Infinity);
+  const incoming = new Map<string, number>();
+  const descendants = new Map<string, Map<string, number>>();
+  for (const id of levels.keys()) { incoming.set(id, 0); descendants.set(id, new Map()); }
+  for (const link of links) {
+    if (link.kind !== "parent") continue;
+    const from = root(link.from), to = root(link.to);
+    if (from === to) continue;
+    const children = descendants.get(from)!;
+    if (!children.has(to)) incoming.set(to, (incoming.get(to) ?? 0) + 1);
+    children.set(to, Math.max(1, children.get(to) ?? 0));
+  }
+  const pending = [...incoming].filter(([, count]) => count === 0).map(([id]) => {
+    levels.set(id, 0);
+    return id;
+  });
+  while (pending.length) {
+    const id = pending.shift()!;
+    for (const [child, distance] of descendants.get(id) ?? []) {
+      levels.set(child, Math.min(levels.get(child)!, (levels.get(id) ?? 0) + distance));
+      const remaining = (incoming.get(child) ?? 0) - 1;
+      incoming.set(child, remaining);
+      if (remaining === 0) pending.push(child);
+    }
+  }
+  return new Map([...ids].map(id => [id, Number.isFinite(levels.get(root(id))!) ? levels.get(root(id))! : 0]));
 }
 
 export function graphFor(input: FamilyState): { nodes: Node[]; edges: Edge[] } {
@@ -149,8 +186,8 @@ export function graphFor(input: FamilyState): { nodes: Node[]; edges: Edge[] } {
   for (const [key, group] of groups) {
     const unionId = `union:${key}`;
     nodes.push({ id: unionId, type: "union", position: { x: 0, y: 0 }, data: {} });
-    for (const parent of group.parents) edges.push({ id: `${parent}-${unionId}`, source: parent, target: unionId, type: group.parents.length > 1 ? "parentUnion" : "smoothstep" });
-    for (const child of group.children) edges.push({ id: `${unionId}-${child}`, source: unionId, target: child, type: "smoothstep" });
+    for (const parent of group.parents) edges.push({ id: `${parent}-${unionId}`, source: parent, target: unionId, type: group.parents.length > 1 ? "parentUnion" : "unionStem" });
+    for (const child of group.children) edges.push({ id: `${unionId}-${child}`, source: unionId, target: child, type: "unionStem" });
   }
   const graph = new dagre.graphlib.Graph();
   graph.setGraph({ rankdir: "TB", nodesep: PERSON_GAP, ranksep: 48 });
@@ -185,5 +222,10 @@ export function graphFor(input: FamilyState): { nodes: Node[]; edges: Edge[] } {
       style: link.complete === false ? { strokeDasharray: "7 7", stroke: "#b69c77" } : { stroke: "#9daa99" },
     });
   }
+  // Once every node has a position, tag custom connector edges with the full set
+  // of person boxes so their path functions can route the horizontal rail around
+  // cards instead of drawing straight through the middle of one.
+  const boxes = personBoxes(nodes, PERSON_WIDTH, PERSON_HEIGHT);
+  for (const edge of edges) if (edge.type === "parentUnion" || edge.type === "unionStem") edge.data = { boxes };
   return { nodes, edges };
 }
